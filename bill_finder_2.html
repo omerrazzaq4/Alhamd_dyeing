@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Al-Hamd Dyeing</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h1 { color: darkblue; }
+    button { margin: 5px; padding: 8px 12px; border-radius: 5px; border: 1px solid #ccc; cursor: pointer; }
+    button:hover { background: #f0f0f0; }
+    button.print-btn { background: #4CAF50; color: white; }
+    button.print-btn:hover { background: #45a049; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+    th { background-color: #f2f2f2; }
+    .totals { font-weight: bold; background: #e0f7fa; }
+    .selection-area { 
+      margin: 15px 0; 
+      padding: 15px; 
+      border: 1px solid #ddd; 
+      border-radius: 5px; 
+      background: #f9f9f9;
+    }
+    .bill-selection { margin-top: 10px; }
+    .bill-checkbox { margin: 5px 10px 5px 0; }
+    input[type="text"] { 
+      padding: 5px; 
+      margin: 5px; 
+      border: 1px solid #ccc; 
+      border-radius: 3px; 
+      width: 300px;
+    }
+    .sheet-selector {
+      margin: 10px 0;
+      padding: 10px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      background: #f5f5f5;
+    }
+    .error-message {
+      color: red;
+      font-weight: bold;
+      margin: 10px 0;
+    }
+    .success-message {
+      color: green;
+      font-weight: bold;
+      margin: 10px 0;
+    }
+    @media print {
+      h1, h2, h3, button, #fileInput, #partyButtons, .selection-area, #selectionArea, #printBtn, .sheet-selector, #messages { display: none !important; }
+      body { margin: 0; font-size: 12px; }
+      
+      /* Override browser default headers/footers */
+      @page {
+        margin: 0.5in;
+        size: A4;
+      }
+      
+      .print-party-name { 
+        font-size: 24px; 
+        font-weight: bold; 
+        text-align: center; 
+        margin: 20px 0; 
+        color: #333;
+        border-bottom: 2px solid #333;
+        padding-bottom: 10px;
+        display: block !important;
+      }
+      .print-company-header {
+        font-size: 28px;
+        font-weight: bold;
+        text-align: center;
+        margin: 10px 0 20px 0;
+        color: #000;
+        display: block !important;
+      }
+      table { font-size: 11px; }
+      th, td { padding: 6px; }
+      
+      /* Hide any remaining screen elements */
+      * { -webkit-print-color-adjust: exact !important; color-adjust: exact !important; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Find Bills by Party</h1>
+
+  <!-- Upload Excel -->
+  <input type="file" id="fileInput" accept=".xlsx,.xls" />
+  <br><br>
+
+  <!-- Sheet Selector (hidden initially) -->
+  <div id="sheetSelector" class="sheet-selector" style="display: none;">
+    <h4>Select Sheet:</h4>
+    <select id="sheetDropdown" onchange="selectSheet()">
+      <option value="">-- Choose a sheet --</option>
+    </select>
+  </div>
+
+  <!-- Messages -->
+  <div id="messages"></div>
+
+  <!-- Party Buttons -->
+  <div id="partySection" style="display: none;">
+    <h3>Parties:</h3>
+    <div id="partyButtons"></div>
+  </div>
+
+  <!-- Bill Selection Area -->
+  <div id="selectionArea" class="selection-area" style="display: none;">
+    <h3>Select Bills to Include:</h3>
+    <label>
+      <input type="radio" name="billSelection" value="all" checked onchange="toggleBillSelection()"> 
+      Include All Bills
+    </label><br>
+    <label>
+      <input type="radio" name="billSelection" value="specific" onchange="toggleBillSelection()"> 
+      Select Specific Bills
+    </label>
+    
+    <div id="specificBillsArea" style="display: none; margin-top: 10px;">
+      <p><em>Select from available bills:</em></p>
+      <div id="billCheckboxes" class="bill-selection"></div>
+    </div>
+    
+    <button onclick="applySelection()" style="margin-top: 10px;">Apply Selection</button>
+  </div>
+
+  <!-- Print Button -->
+  <button id="printBtn" class="print-btn" onclick="printResults()" style="display: none;">🖨️ Print Results</button>
+
+  <!-- Results -->
+  <h2>Results:</h2>
+  <div id="results"></div>
+
+  <script>
+    let workbookData = null;
+    let ledgerData = [];
+    let balanceData = [];
+    let currentPartyResults = [];
+    let currentParty = "";
+
+    // Show messages
+    function showMessage(text, type = 'info') {
+      const messagesDiv = document.getElementById('messages');
+      const className = type === 'error' ? 'error-message' : 'success-message';
+      messagesDiv.innerHTML = `<div class="${className}">${text}</div>`;
+    }
+
+    // Upload and read Excel file
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+
+      reader.onload = function(event) {
+        try {
+          const data = new Uint8Array(event.target.result);
+          workbookData = XLSX.read(data, { type: 'array' });
+
+          // Get all sheet names
+          const sheetNames = workbookData.SheetNames;
+          
+          if (sheetNames.length === 0) {
+            showMessage("❌ No sheets found in this Excel file.", 'error');
+            return;
+          }
+
+          if (sheetNames.length === 1) {
+            // If only one sheet, use it directly
+            processSheet(sheetNames[0]);
+          } else {
+            // Show sheet selector for multiple sheets
+            populateSheetSelector(sheetNames);
+          }
+
+        } catch (error) {
+          showMessage("❌ Error reading Excel file: " + error.message, 'error');
+        }
+      };
+
+      reader.readAsArrayBuffer(file);
+    });
+
+    // Populate sheet selector dropdown
+    function populateSheetSelector(sheetNames) {
+      const dropdown = document.getElementById('sheetDropdown');
+      dropdown.innerHTML = '<option value="">-- Choose a sheet --</option>';
+      
+      sheetNames.forEach(name => {
+        dropdown.innerHTML += `<option value="${name}">${name}</option>`;
+      });
+
+      document.getElementById('sheetSelector').style.display = 'block';
+      showMessage("📋 Multiple sheets found. Please select a sheet to continue.");
+    }
+
+    // Select and process a sheet
+    function selectSheet() {
+      const selectedSheet = document.getElementById('sheetDropdown').value;
+      if (selectedSheet) {
+        processSheet(selectedSheet);
+      }
+    }
+
+    // Process the selected sheet
+    function processSheet(sheetName) {
+      try {
+        const sheet = workbookData.Sheets[sheetName];
+        if (!sheet) {
+          showMessage(`❌ Sheet "${sheetName}" not found.`, 'error');
+          return;
+        }
+
+        // Convert sheet to JSON
+        const rawData = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+        if (rawData.length === 0) {
+          showMessage("❌ The selected sheet appears to be empty.", 'error');
+          return;
+        }
+
+        // Clean the data - remove pivot table and empty columns
+        ledgerData = cleanTableData(rawData);
+
+        if (ledgerData.length === 0) {
+          showMessage("❌ No valid table data found after cleaning.", 'error');
+          return;
+        }
+
+        // Also load Balance sheet if it exists
+        loadBalanceSheet();
+
+        // Find the Party Name column (try different variations)
+        const possiblePartyColumns = [
+          "Party Name", "PartyName", "party_name", "Party", "party",
+          "Customer Name", "CustomerName", "customer_name", "Customer", "customer",
+          "Client Name", "ClientName", "client_name", "Client", "client",
+          "Name", "name", "PARTY NAME", "PARTY", "CLIENT", "CUSTOMER"
+        ];
+
+        let partyColumn = null;
+        const availableColumns = Object.keys(ledgerData[0] || {});
+
+        // First, try exact match with trimmed column names
+        for (let col of possiblePartyColumns) {
+          const foundCol = availableColumns.find(availableCol => availableCol.trim() === col);
+          if (foundCol) {
+            partyColumn = foundCol;
+            break;
+          }
+        }
+
+        // If no exact match, try case-insensitive match with trimmed names
+        if (!partyColumn) {
+          for (let col of possiblePartyColumns) {
+            const foundCol = availableColumns.find(availableCol => 
+              availableCol.trim().toLowerCase() === col.toLowerCase()
+            );
+            if (foundCol) {
+              partyColumn = foundCol;
+              break;
+            }
+          }
+        }
+
+        if (!partyColumn) {
+          showMessage(`❌ Could not find a Party Name column. Available columns: ${availableColumns.join(', ')}`, 'error');
+          return;
+        }
+
+        // Create unique party buttons from the found column
+        const parties = [...new Set(ledgerData
+          .map(row => row[partyColumn])
+          .filter(p => p && p.toString().trim() !== "")
+        )].sort();
+
+        if (parties.length === 0) {
+          showMessage(`❌ No party names found in column "${partyColumn}".`, 'error');
+          return;
+        }
+
+        let buttonsHtml = "";
+        parties.forEach(p => {
+          const partyName = p.toString(); // Convert to string first
+          buttonsHtml += `<button onclick="searchBills('${partyName.replace(/'/g, "\\'")}')">${partyName}</button>`;
+        });
+        document.getElementById("partyButtons").innerHTML = buttonsHtml;
+        document.getElementById("partySection").style.display = 'block';
+        document.getElementById('sheetSelector').style.display = 'none';
+
+        const balanceMessage = balanceData.length > 0 ? " (Balance sheet also loaded)" : " (No Balance sheet found)";
+        showMessage(`✅ Successfully loaded ${ledgerData.length} records with ${parties.length} unique parties from column "${partyColumn}".${balanceMessage}`);
+
+      } catch (error) {
+        showMessage("❌ Error processing sheet: " + error.message, 'error');
+      }
+    }
+
+    // Clean table data - remove empty columns and pivot table artifacts
+    function cleanTableData(rawData) {
+      if (rawData.length === 0) return rawData;
+
+      // Get all column names
+      const allColumns = Object.keys(rawData[0]);
+      
+      // Filter out unwanted columns
+      const validColumns = allColumns.filter(col => {
+        const colName = col.toString().toLowerCase();
+        
+        // Remove empty columns (Excel artifacts)
+        if (colName.includes('__empty') || colName.includes('empty')) {
+          return false;
+        }
+        
+        // Remove columns that are just whitespace or numbers
+        if (colName.trim() === '' || /^\d+$/.test(colName)) {
+          return false;
+        }
+        
+        // Remove columns that appear to be pivot table artifacts
+        if (colName.includes('sum of') || colName.includes('count of') || 
+            colName.includes('average of') || colName.includes('total')) {
+          return false;
+        }
+        
+        return true;
+      });
+
+      console.log("Original columns:", allColumns);
+      console.log("Filtered columns:", validColumns);
+
+      // Create cleaned data with only valid columns
+      const cleanedData = rawData.map(row => {
+        const cleanedRow = {};
+        validColumns.forEach(col => {
+          cleanedRow[col] = row[col];
+        });
+        return cleanedRow;
+      }).filter(row => {
+        // Remove rows that are completely empty or contain only pivot table data
+        const values = Object.values(row);
+        const hasRealData = values.some(val => 
+          val !== "" && val !== null && val !== undefined && 
+          !isNaN(val) || (typeof val === 'string' && val.trim() !== "")
+        );
+        return hasRealData;
+      });
+
+      return cleanedData;
+    }
+
+    // Load Balance sheet data
+    function loadBalanceSheet() {
+      try {
+        const balanceSheetNames = ["Balance", "balance", "BALANCE", "Balances", "balances"];
+        let balanceSheet = null;
+        let balanceSheetName = null;
+
+        // Try to find balance sheet with different names
+        for (let name of balanceSheetNames) {
+          if (workbookData.Sheets[name]) {
+            balanceSheet = workbookData.Sheets[name];
+            balanceSheetName = name;
+            break;
+          }
+        }
+
+        if (balanceSheet) {
+          const rawBalanceData = XLSX.utils.sheet_to_json(balanceSheet, { defval: "" });
+          balanceData = cleanTableData(rawBalanceData); // Clean balance data too
+          console.log(`Balance sheet "${balanceSheetName}" loaded with ${balanceData.length} records`);
+        } else {
+          balanceData = [];
+          console.log("No Balance sheet found");
+        }
+      } catch (error) {
+        console.log("Error loading balance sheet:", error);
+        balanceData = [];
+      }
+    }
+
+    // Get payment data for a party
+    function getPartyPayments(partyName) {
+      if (balanceData.length === 0) {
+        console.log("No balance data available");
+        return { totalPaid: 0, balanceFound: false };
+      }
+
+      console.log("Balance data:", balanceData);
+      console.log("Looking for party:", partyName);
+
+      // Find party column in balance sheet
+      const possiblePartyColumns = [
+        "Party Name", "PartyName", "party_name", "Party", "party",
+        "Customer Name", "CustomerName", "customer_name", "Customer", "customer",
+        "Client Name", "ClientName", "client_name", "Client", "client",
+        "Name", "name", "PARTY NAME", "PARTY", "CLIENT", "CUSTOMER"
+      ];
+
+      let partyColumn = null;
+      const balanceColumns = Object.keys(balanceData[0] || {});
+      console.log("Available balance columns:", balanceColumns);
+
+      // Find party column in balance sheet
+      for (let col of possiblePartyColumns) {
+        const foundCol = balanceColumns.find(availableCol => 
+          availableCol.trim().toLowerCase() === col.toLowerCase()
+        );
+        if (foundCol) {
+          partyColumn = foundCol;
+          console.log("Found party column:", foundCol);
+          break;
+        }
+      }
+
+      if (!partyColumn) {
+        console.log("No party column found in balance sheet");
+        return { totalPaid: 0, balanceFound: false };
+      }
+
+      // Find payment/amount columns - prioritize "Amount Paid" first
+      const possiblePaymentColumns = [
+        "Amount Paid", "amount paid", "AMOUNT PAID", "amount_paid", "AmountPaid",
+        "Paid", "paid", "PAID", "Payment", "payment", "PAYMENT",
+        "Total Paid", "total_paid", "TotalPaid", "TOTAL PAID",
+        "Credit", "credit", "CREDIT", "Amount", "amount", "AMOUNT"
+      ];
+
+      let paymentColumn = null;
+      for (let col of possiblePaymentColumns) {
+        const foundCol = balanceColumns.find(availableCol => 
+          availableCol.trim().toLowerCase() === col.toLowerCase()
+        );
+        if (foundCol) {
+          paymentColumn = foundCol;
+          console.log("Found payment column:", foundCol);
+          break;
+        }
+      }
+
+      if (!paymentColumn) {
+        console.log("No payment column found in balance sheet. Available columns:", balanceColumns);
+        return { totalPaid: 0, balanceFound: false };
+      }
+
+      // Sum all payments for this party
+      const partyPayments = balanceData.filter(row =>
+        row[partyColumn] && row[partyColumn].toString().toLowerCase().trim() === partyName.toLowerCase().trim()
+      );
+
+      console.log("Found payments for party:", partyPayments);
+
+      const totalPaid = partyPayments.reduce((sum, row) => {
+        const payment = parseFloat(row[paymentColumn]) || 0;
+        console.log(`Payment entry: ${row[paymentColumn]} -> ${payment}`);
+        return sum + payment;
+      }, 0);
+
+      console.log("Total paid calculated:", totalPaid);
+      return { totalPaid, balanceFound: true };
+    }
+
+    // Search bills by party
+    function searchBills(partyName) {
+      currentParty = partyName;
+      
+      // Find which column contains party names
+      const possiblePartyColumns = [
+        "Party Name", "PartyName", "party_name", "Party", "party",
+        "Customer Name", "CustomerName", "customer_name", "Customer", "customer",
+        "Client Name", "ClientName", "client_name", "Client", "client",
+        "Name", "name", "PARTY NAME", "PARTY", "CLIENT", "CUSTOMER"
+      ];
+
+      let partyColumn = null;
+      const availableColumns = Object.keys(ledgerData[0] || {});
+
+      // First, try exact match with trimmed column names
+      for (let col of possiblePartyColumns) {
+        const foundCol = availableColumns.find(availableCol => availableCol.trim() === col);
+        if (foundCol) {
+          partyColumn = foundCol;
+          break;
+        }
+      }
+
+      // If no exact match, try case-insensitive match with trimmed names
+      if (!partyColumn) {
+        for (let col of possiblePartyColumns) {
+          const foundCol = availableColumns.find(availableCol => 
+            availableCol.trim().toLowerCase() === col.toLowerCase()
+          );
+          if (foundCol) {
+            partyColumn = foundCol;
+            break;
+          }
+        }
+      }
+
+      const results = ledgerData.filter(row =>
+        row[partyColumn] && row[partyColumn].toString().toLowerCase() === partyName.toLowerCase()
+      );
+
+      if (results.length === 0) {
+        document.getElementById('results').innerHTML = "❌ No bills found for this party.";
+        document.getElementById('selectionArea').style.display = 'none';
+        document.getElementById('printBtn').style.display = 'none';
+        return;
+      }
+
+      currentPartyResults = results;
+      
+      // Show selection area and populate bill checkboxes
+      document.getElementById('selectionArea').style.display = 'block';
+      populateBillCheckboxes(results);
+      
+      // Reset selection to "all"
+      document.querySelector('input[name="billSelection"][value="all"]').checked = true;
+      toggleBillSelection();
+      
+      // Display results
+      displayResults(results);
+    }
+
+    // Populate bill checkboxes
+    function populateBillCheckboxes(results) {
+      let checkboxHtml = "";
+      results.forEach((row, index) => {
+        // Look for actual bill number in multiple possible column names
+        const possibleBillColumns = [
+          "Bill No", "BillNo", "bill_no", "Bill Number", "BillNumber", "bill_number",
+          "ID", "id", "Bill_No", "billno", "Bill#", "bill#", "Invoice No", 
+          "InvoiceNo", "invoice_no", "Receipt No", "ReceiptNo", "receipt_no"
+        ];
+
+        let billNumber = null;
+        for (let col of possibleBillColumns) {
+          if (row[col] && row[col].toString().trim() !== "") {
+            billNumber = row[col];
+            break;
+          }
+        }
+
+        if (!billNumber) {
+          billNumber = index + 1; // fallback to row number
+        }
+        
+        checkboxHtml += `
+          <label class="bill-checkbox">
+            <input type="checkbox" value="${index}"> 
+            Bill ${billNumber}
+          </label>
+        `;
+      });
+      document.getElementById('billCheckboxes').innerHTML = checkboxHtml;
+    }
+
+    // Toggle bill selection method
+    function toggleBillSelection() {
+      const isSpecific = document.querySelector('input[name="billSelection"][value="specific"]').checked;
+      document.getElementById('specificBillsArea').style.display = isSpecific ? 'block' : 'none';
+      
+      if (!isSpecific) {
+        // If "all" is selected, apply immediately
+        applySelection();
+      }
+    }
+
+    // Apply selection and filter results
+    function applySelection() {
+      if (currentPartyResults.length === 0) return;
+      
+      const isSpecific = document.querySelector('input[name="billSelection"][value="specific"]').checked;
+      let filteredResults = [];
+      
+      if (isSpecific) {
+        // Get selected bills from checkboxes only
+        const selectedCheckboxes = Array.from(document.querySelectorAll('#billCheckboxes input[type="checkbox"]:checked'));
+        
+        // Filter by selected checkboxes
+        const selectedIndices = selectedCheckboxes.map(cb => parseInt(cb.value));
+        filteredResults = currentPartyResults.filter((row, index) => selectedIndices.includes(index));
+      } else {
+        // Include all bills
+        filteredResults = currentPartyResults;
+      }
+      
+      displayResults(filteredResults);
+    }
+
+    // Display results in table
+    function displayResults(results) {
+      if (results.length === 0) {
+        document.getElementById('results').innerHTML = "❌ No bills found matching your selection.";
+        document.getElementById('printBtn').style.display = 'none';
+        return;
+      }
+
+      // Build table
+      let html = `
+        <div class="print-company-header">Al-Hamd Dyeing</div>
+        <div class="print-party-name">${currentParty}</div>
+        <h3 style="display: none;">Results for ${currentParty} (${results.length} bills)</h3>
+        <table><tr>`;
+      Object.keys(results[0]).forEach(key => {
+        html += `<th>${key}</th>`;
+      });
+      html += "</tr>";
+
+      let totalBilling = 0, totalTiyarGaz = 0, totalTiyarMeters = 0;
+
+      results.forEach(row => {
+        html += "<tr>";
+        Object.keys(row).forEach(key => {
+          let value = row[key];
+          
+          // Format dates properly (Excel dates come as numbers)
+          if (key.toLowerCase().includes('date') && typeof value === "number" && value > 1000) {
+            // Convert Excel date serial number to proper date
+            const excelDate = new Date((value - 25569) * 86400 * 1000);
+            value = excelDate.toLocaleDateString('en-GB'); // DD/MM/YYYY format
+          } else if (typeof value === "number" && !key.toLowerCase().includes('date')) {
+            value = value.toFixed(2);
+          }
+          
+          html += `<td>${value}</td>`;
+        });
+        html += "</tr>";
+
+        // Calculate totals for numeric columns
+        totalBilling += Number(row["billing"] || row["Billing"] || 0);
+        totalTiyarGaz += Number(row["Tiyaar/gaz"] || row["tiyaar/gaz"] || row["Tiyar/Gaz"] || 0);
+        totalTiyarMeters += Number(row["tiyar/meters"] || row["Tiyar/Meters"] || row["Tiyaar/Meters"] || 0);
+      });
+
+      // Totals row
+      html += "<tr class='totals'>";
+      Object.keys(results[0]).forEach(key => {
+        const keyLower = key.toLowerCase();
+        if (keyLower.includes("billing")) {
+          html += `<td>${totalBilling.toFixed(2)}</td>`;
+        } else if (keyLower.includes("gaz") && keyLower.includes("tiyar")) {
+          html += `<td>${totalTiyarGaz.toFixed(2)}</td>`;
+        } else if (keyLower.includes("meter") && keyLower.includes("tiyar")) {
+          html += `<td>${totalTiyarMeters.toFixed(2)}</td>`;
+        } else {
+          html += "<td></td>";
+        }
+      });
+      html += "</tr>";
+
+      html += "</table>";
+
+      // Add balance summary
+      const paymentInfo = getPartyPayments(currentParty);
+      if (paymentInfo.balanceFound || totalBilling > 0) {
+        const totalOwed = totalBilling - paymentInfo.totalPaid;
+        html += `
+          <div style="margin-top: 20px; padding: 15px; border: 2px solid #333; border-radius: 8px; background: #f0f8ff;">
+            <h3 style="margin-top: 0; color: #333;">💰 Financial Summary for ${currentParty}</h3>
+            <table style="width: auto; margin: 0;">
+              <tr>
+                <td style="padding: 8px; font-weight: bold; text-align: right; border: 1px solid #ddd;">Total Billing:</td>
+                <td style="padding: 8px; text-align: right; border: 1px solid #ddd; background: #ffe6e6;">${totalBilling.toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px; font-weight: bold; text-align: right; border: 1px solid #ddd;">Total Paid:</td>
+                <td style="padding: 8px; text-align: right; border: 1px solid #ddd; background: #e6ffe6;">${paymentInfo.totalPaid.toFixed(2)}</td>
+              </tr>
+              <tr class="totals">
+                <td style="padding: 8px; font-weight: bold; text-align: right; border: 2px solid #333;">Balance Owed:</td>
+                <td style="padding: 8px; text-align: right; border: 2px solid #333; background: ${totalOwed > 0 ? '#ffcccc' : '#ccffcc'}; font-weight: bold; font-size: 16px;">
+                  ${totalOwed.toFixed(2)}
+                </td>
+              </tr>
+            </table>
+            ${!paymentInfo.balanceFound ? '<p style="color: #666; font-style: italic; margin-top: 10px;">⚠️ No Balance sheet found - payment data unavailable</p>' : ''}
+          </div>
+        `;
+      }
+
+      document.getElementById('results').innerHTML = html;
+      document.getElementById('printBtn').style.display = 'inline-block';
+    }
+
+    // Print results
+    function printResults() {
+      window.print();
+    }
+  </script>
+</body>
+</html>
