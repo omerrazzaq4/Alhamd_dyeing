@@ -88,8 +88,7 @@
   <h1>Find Dye Orders by Party</h1>
 
   <!-- Upload Excel -->
-  <input type="file" id="fileInput" accept=".xlsx,.xls" />
-  <br><br>
+
 
   <!-- Sheet Selector (hidden initially) -->
   <div id="sheetSelector" class="sheet-selector" style="display: none;">
@@ -150,40 +149,7 @@
     }
 
     // Upload and read Excel file
-    document.getElementById('fileInput').addEventListener('change', function(e) {
-      const file = e.target.files[0];
-      if (!file) return;
-
-      const reader = new FileReader();
-
-      reader.onload = function(event) {
-        try {
-          const data = new Uint8Array(event.target.result);
-          workbookData = XLSX.read(data, { type: 'array' });
-
-          // Get all sheet names
-          const sheetNames = workbookData.SheetNames;
-          
-          if (sheetNames.length === 0) {
-            showMessage("❌ No sheets found in this Excel file.", 'error');
-            return;
-          }
-
-          if (sheetNames.length === 1) {
-            // If only one sheet, use it directly
-            processSheet(sheetNames[0]);
-          } else {
-            // Show sheet selector for multiple sheets
-            populateSheetSelector(sheetNames);
-          }
-
-        } catch (error) {
-          showMessage("❌ Error reading Excel file: " + error.message, 'error');
-        }
-      };
-
-      reader.readAsArrayBuffer(file);
-    });
+    
 
     // Populate sheet selector dropdown
     function populateSheetSelector(sheetNames) {
@@ -707,6 +673,33 @@
     function printResults() {
       window.print();
     }
+    async function autoLoadExcel() {
+  try {
+    const response = await fetch("Factory_Khata_August.xlsx"); // adjust path if needed
+    const arrayBuffer = await response.arrayBuffer();
+    workbookData = XLSX.read(arrayBuffer, { type: "array" });
+
+    const sheetNames = workbookData.SheetNames;
+    if (sheetNames.length === 0) {
+      showMessage("❌ No sheets found in data.xlsx.", "error");
+      return;
+    }
+
+    if (sheetNames.length === 1) {
+      processSheet(sheetNames[0]);
+    } else {
+      populateSheetSelector(sheetNames);
+    }
+
+  } catch (err) {
+    showMessage("❌ Could not load Excel file automatically: " + err.message, "error");
+  }
+}
+
+window.addEventListener("DOMContentLoaded", autoLoadExcel);
+
+// Run auto-load when page opens
+window.addEventListener("DOMContentLoaded", autoLoadExcel);
   </script>
 </body>
 </html>
