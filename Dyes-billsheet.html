@@ -48,8 +48,19 @@
       font-weight: bold;
       margin: 10px 0;
     }
+    .file-config {
+      margin: 15px 0;
+      padding: 15px;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      background: #f8f9fa;
+    }
+    .file-config input {
+      width: 400px;
+      margin: 5px;
+    }
     @media print {
-      h1, h2, h3, button, #fileInput, #partyButtons, .selection-area, #selectionArea, #printBtn, .sheet-selector, #messages { display: none !important; }
+      h1, h2, h3, button, #fileConfig, #partyButtons, .selection-area, #selectionArea, #printBtn, .sheet-selector, #messages, .file-config { display: none !important; }
       body { margin: 0; font-size: 12px; }
       
       /* Override browser default headers/footers */
@@ -87,9 +98,13 @@
 <body>
   <h1>Find Dye Orders by Party</h1>
 
-  <!-- Upload Excel -->
-  <input type="file" id="fileInput" accept=".xlsx,.xls" />
-  <br><br>
+  <!-- File Configuration -->
+  <div id="fileConfig" class="file-config">
+    <h4>Excel File Configuration:</h4>
+    <input type="text" id="filePathInput" placeholder="Enter Excel file name (e.g., dye_orders.xlsx)" value="dye_orders.xlsx">
+    <button onclick="loadExcelFile()" style="background: #007bff; color: white;">📁 Load Excel File</button>
+    <p><em>Note: Place your Excel file in the same directory as this HTML file.</em></p>
+  </div>
 
   <!-- Sheet Selector (hidden initially) -->
   <div id="sheetSelector" class="sheet-selector" style="display: none;">
@@ -142,6 +157,15 @@
     let currentPartyResults = [];
     let currentParty = "";
 
+    // Auto-load on page load
+    window.onload = function() {
+      // Try to load default file automatically
+      const defaultFileName = document.getElementById('filePathInput').value;
+      if (defaultFileName) {
+        loadExcelFile();
+      }
+    };
+
     // Show messages
     function showMessage(text, type = 'info') {
       const messagesDiv = document.getElementById('messages');
@@ -149,41 +173,49 @@
       messagesDiv.innerHTML = `<div class="${className}">${text}</div>`;
     }
 
-    // Upload and read Excel file
-    document.getElementById('fileInput').addEventListener('change', function(e) {
-      const file = e.target.files[0];
-      if (!file) return;
+    // Load Excel file from local directory
+    async function loadExcelFile() {
+      const fileName = document.getElementById('filePathInput').value.trim();
+      if (!fileName) {
+        showMessage("❌ Please enter a file name.", 'error');
+        return;
+      }
 
-      const reader = new FileReader();
-
-      reader.onload = function(event) {
-        try {
-          const data = new Uint8Array(event.target.result);
-          workbookData = XLSX.read(data, { type: 'array' });
-
-          // Get all sheet names
-          const sheetNames = workbookData.SheetNames;
-          
-          if (sheetNames.length === 0) {
-            showMessage("❌ No sheets found in this Excel file.", 'error');
-            return;
-          }
-
-          if (sheetNames.length === 1) {
-            // If only one sheet, use it directly
-            processSheet(sheetNames[0]);
-          } else {
-            // Show sheet selector for multiple sheets
-            populateSheetSelector(sheetNames);
-          }
-
-        } catch (error) {
-          showMessage("❌ Error reading Excel file: " + error.message, 'error');
+      try {
+        showMessage("📋 Loading Excel file...");
+        
+        // Try to fetch the file from the same directory
+        const response = await fetch(fileName);
+        
+        if (!response.ok) {
+          throw new Error(`File not found: ${fileName}. Make sure the file is in the same directory as this HTML file.`);
         }
-      };
 
-      reader.readAsArrayBuffer(file);
-    });
+        const arrayBuffer = await response.arrayBuffer();
+        const data = new Uint8Array(arrayBuffer);
+        workbookData = XLSX.read(data, { type: 'array' });
+
+        // Get all sheet names
+        const sheetNames = workbookData.SheetNames;
+        
+        if (sheetNames.length === 0) {
+          showMessage("❌ No sheets found in this Excel file.", 'error');
+          return;
+        }
+
+        if (sheetNames.length === 1) {
+          // If only one sheet, use it directly
+          processSheet(sheetNames[0]);
+        } else {
+          // Show sheet selector for multiple sheets
+          populateSheetSelector(sheetNames);
+        }
+
+      } catch (error) {
+        showMessage("❌ Error loading Excel file: " + error.message, 'error');
+        console.error("File loading error:", error);
+      }
+    }
 
     // Populate sheet selector dropdown
     function populateSheetSelector(sheetNames) {
