@@ -2,18 +2,18 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Al-Hamd Dyeing</title>
+  <title>Wood Bill Sheet</title>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    h1 { color: darkblue; }
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+    h1 { color: #1e3c72; }
     button { margin: 5px; padding: 8px 12px; border-radius: 5px; border: 1px solid #ccc; cursor: pointer; }
     button:hover { background: #f0f0f0; }
     button.print-btn { background: #4CAF50; color: white; }
     button.print-btn:hover { background: #45a049; }
-    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; background: white; }
     th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
-    th { background-color: #f2f2f2; }
+    th { background-color: #2a5298; color: white; }
     .totals { font-weight: bold; background: #e0f7fa; }
     .selection-area { margin: 15px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background: #f9f9f9; }
     .bill-selection { margin-top: 10px; }
@@ -35,9 +35,9 @@
   </style>
 </head>
 <body>
-  <h1>Find Bills by Party</h1>
+  <h1>🪵 Wood Bill Sheet</h1>
 
-  <!-- Sheet Selector (hidden initially) -->
+  <!-- Sheet Selector -->
   <div id="sheetSelector" class="sheet-selector" style="display: none;">
     <h4>Select Sheet:</h4>
     <select id="sheetDropdown" onchange="selectSheet()">
@@ -86,16 +86,17 @@
       messagesDiv.innerHTML = `<div class="${className}">${text}</div>`;
     }
 
-    // 🔹 Auto-load Excel file from same folder as HTML
+    // ✅ Auto-load Excel file from same folder as this HTML
     async function autoLoadExcel() {
       try {
-        const response = await fetch("Factory_Khata_August.xlsx"); // adjust if in subfolder
+        const response = await fetch("./Factory_Khata_August.xlsx"); // Excel file must be here
+        if (!response.ok) throw new Error("Excel file not found");
         const arrayBuffer = await response.arrayBuffer();
         workbookData = XLSX.read(arrayBuffer, { type: "array" });
 
         const sheetNames = workbookData.SheetNames;
         if (sheetNames.length === 0) {
-          showMessage("❌ No sheets found in data.xlsx.", "error");
+          showMessage("❌ No sheets found in Excel file.", "error");
           return;
         }
         if (sheetNames.length === 1) {
@@ -103,13 +104,14 @@
         } else {
           populateSheetSelector(sheetNames);
         }
+        showMessage("✅ Excel file loaded successfully.", "success");
       } catch (err) {
-        showMessage("❌ Could not load Excel file automatically: " + err.message, "error");
+        showMessage("❌ Could not load Excel file: " + err.message, "error");
       }
     }
     window.addEventListener("DOMContentLoaded", autoLoadExcel);
 
-    // --- your existing functions remain unchanged ---
+    // --- keep your existing functions ---
     function populateSheetSelector(sheetNames) { /* ... */ }
     function selectSheet() { /* ... */ }
     function processSheet(sheetName) { /* ... */ }
