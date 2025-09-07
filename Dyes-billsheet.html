@@ -22,8 +22,8 @@
       border-radius: 5px; 
       background: #f9f9f9;
     }
-    .bill-selection { margin-top: 10px; }
-    .bill-checkbox { margin: 5px 10px 5px 0; }
+    .order-selection { margin-top: 10px; }
+    .order-checkbox { margin: 5px 10px 5px 0; }
     input[type="text"] { 
       padding: 5px; 
       margin: 5px; 
@@ -48,22 +48,10 @@
       font-weight: bold;
       margin: 10px 0;
     }
-    .file-config {
-      margin: 15px 0;
-      padding: 15px;
-      border: 1px solid #ccc;
-      border-radius: 5px;
-      background: #f8f9fa;
-    }
-    .file-config input {
-      width: 400px;
-      margin: 5px;
-    }
     @media print {
-      h1, h2, h3, button, #fileConfig, #partyButtons, .selection-area, #selectionArea, #printBtn, .sheet-selector, #messages, .file-config { display: none !important; }
+      h1, h2, h3, button, .selection-area, #selectionArea, #printBtn, .sheet-selector, #messages { display: none !important; }
       body { margin: 0; font-size: 12px; }
       
-      /* Override browser default headers/footers */
       @page {
         margin: 0.5in;
         size: A4;
@@ -89,8 +77,6 @@
       }
       table { font-size: 11px; }
       th, td { padding: 6px; }
-      
-      /* Hide any remaining screen elements */
       * { -webkit-print-color-adjust: exact !important; color-adjust: exact !important; }
     }
   </style>
@@ -98,13 +84,7 @@
 <body>
   <h1>Find Dye Orders by Party</h1>
 
-  <!-- File Configuration -->
-  <div id="fileConfig" class="file-config">
-    <h4>Excel File Configuration:</h4>
-    <input type="text" id="filePathInput" placeholder="Enter Excel file name (e.g., dye_orders.xlsx)" value="dye_orders.xlsx">
-    <button onclick="loadExcelFile()" style="background: #007bff; color: white;">📁 Load Excel File</button>
-    <p><em>Note: Place your Excel file in the same directory as this HTML file.</em></p>
-  </div>
+  <!-- Auto-loading Excel from directory -->
 
   <!-- Sheet Selector (hidden initially) -->
   <div id="sheetSelector" class="sheet-selector" style="display: none;">
@@ -123,28 +103,28 @@
     <div id="partyButtons"></div>
   </div>
 
-  <!-- Bill Selection Area -->
+  <!-- Order Selection Area -->
   <div id="selectionArea" class="selection-area" style="display: none;">
     <h3>Select Orders to Include:</h3>
     <label>
-      <input type="radio" name="billSelection" value="all" checked onchange="toggleBillSelection()"> 
+      <input type="radio" name="orderSelection" value="all" checked onchange="toggleOrderSelection()"> 
       Include All Orders
     </label><br>
     <label>
-      <input type="radio" name="billSelection" value="specific" onchange="toggleBillSelection()"> 
+      <input type="radio" name="orderSelection" value="specific" onchange="toggleOrderSelection()"> 
       Select Specific Orders
     </label>
     
-    <div id="specificBillsArea" style="display: none; margin-top: 10px;">
+    <div id="specificOrdersArea" style="display: none; margin-top: 10px;">
       <p><em>Select from available orders:</em></p>
-      <div id="billCheckboxes" class="bill-selection"></div>
+      <div id="orderCheckboxes" class="order-selection"></div>
     </div>
     
     <button onclick="applySelection()" style="margin-top: 10px;">Apply Selection</button>
   </div>
 
   <!-- Print Button -->
-  <button id="printBtn" class="print-btn" onclick="printResults()" style="display: none;">🖨️ Print Results</button>
+  <button id="printBtn" class="print-btn" onclick="printResults()" style="display: none;">Print Results</button>
 
   <!-- Results -->
   <h2>Results:</h2>
@@ -152,19 +132,9 @@
 
   <script>
     let workbookData = null;
-    let ledgerData = [];
-    let balanceData = [];
+    let dyeOrdersData = [];
     let currentPartyResults = [];
     let currentParty = "";
-
-    // Auto-load on page load
-    window.onload = function() {
-      // Try to load default file automatically
-      const defaultFileName = document.getElementById('filePathInput').value;
-      if (defaultFileName) {
-        loadExcelFile();
-      }
-    };
 
     // Show messages
     function showMessage(text, type = 'info') {
@@ -173,49 +143,33 @@
       messagesDiv.innerHTML = `<div class="${className}">${text}</div>`;
     }
 
-    // Load Excel file from local directory
-    async function loadExcelFile() {
-      const fileName = document.getElementById('filePathInput').value.trim();
-      if (!fileName) {
-        showMessage("❌ Please enter a file name.", 'error');
-        return;
-      }
-
+    // Auto-load Excel file from directory
+    async function autoLoadExcel() {
       try {
-        showMessage("📋 Loading Excel file...");
+        const response = await fetch("Factory_Khata_August.xlsx");
+        if (!response.ok) throw new Error("File not found - make sure Factory_Khata_August.xlsx is in the same directory");
         
-        // Try to fetch the file from the same directory
-        const response = await fetch(fileName);
-        
-        if (!response.ok) {
-          throw new Error(`File not found: ${fileName}. Make sure the file is in the same directory as this HTML file.`);
-        }
-
         const arrayBuffer = await response.arrayBuffer();
-        const data = new Uint8Array(arrayBuffer);
-        workbookData = XLSX.read(data, { type: 'array' });
+        workbookData = XLSX.read(arrayBuffer, { type: "array" });
 
-        // Get all sheet names
         const sheetNames = workbookData.SheetNames;
-        
         if (sheetNames.length === 0) {
-          showMessage("❌ No sheets found in this Excel file.", 'error');
+          showMessage("No sheets found in the Excel file.", "error");
           return;
         }
 
         if (sheetNames.length === 1) {
-          // If only one sheet, use it directly
           processSheet(sheetNames[0]);
         } else {
-          // Show sheet selector for multiple sheets
           populateSheetSelector(sheetNames);
         }
 
-      } catch (error) {
-        showMessage("❌ Error loading Excel file: " + error.message, 'error');
-        console.error("File loading error:", error);
+      } catch (err) {
+        showMessage("Could not load Factory_Khata_August.xlsx from directory: " + err.message, "error");
       }
     }
+
+    window.addEventListener("DOMContentLoaded", autoLoadExcel);
 
     // Populate sheet selector dropdown
     function populateSheetSelector(sheetNames) {
@@ -227,7 +181,7 @@
       });
 
       document.getElementById('sheetSelector').style.display = 'block';
-      showMessage("📋 Multiple sheets found. Please select a sheet to continue.");
+      showMessage("Multiple sheets found. Please select a sheet to continue.");
     }
 
     // Select and process a sheet
@@ -243,7 +197,7 @@
       try {
         const sheet = workbookData.Sheets[sheetName];
         if (!sheet) {
-          showMessage(`❌ Sheet "${sheetName}" not found.`, 'error');
+          showMessage(`Sheet "${sheetName}" not found.`, 'error');
           return;
         }
 
@@ -251,31 +205,28 @@
         const rawData = XLSX.utils.sheet_to_json(sheet, { defval: "" });
 
         if (rawData.length === 0) {
-          showMessage("❌ The selected sheet appears to be empty.", 'error');
+          showMessage("The selected sheet appears to be empty.", 'error');
           return;
         }
 
         // Clean the data - remove pivot table and empty columns
-        ledgerData = cleanTableData(rawData);
+        dyeOrdersData = cleanTableData(rawData);
 
-        if (ledgerData.length === 0) {
-          showMessage("❌ No valid table data found after cleaning.", 'error');
+        if (dyeOrdersData.length === 0) {
+          showMessage("No valid table data found after cleaning.", 'error');
           return;
         }
 
-        // Also load Balance sheet if it exists
-        loadBalanceSheet();
-
         // Find the Party Name column (try different variations)
         const possiblePartyColumns = [
-          "Party Name", "PartyName", "party_name", "Party", "party",
-          "Customer Name", "CustomerName", "customer_name", "Customer", "customer",
-          "Client Name", "ClientName", "client_name", "Client", "client",
-          "Name", "name", "PARTY NAME", "PARTY", "CLIENT", "CUSTOMER"
+          "Party", "party", "PARTY", "Party Name", "PartyName", "party_name",
+          "Customer", "customer", "CUSTOMER", "Customer Name", "CustomerName", "customer_name",
+          "Client", "client", "CLIENT", "Client Name", "ClientName", "client_name",
+          "Name", "name", "NAME"
         ];
 
         let partyColumn = null;
-        const availableColumns = Object.keys(ledgerData[0] || {});
+        const availableColumns = Object.keys(dyeOrdersData[0] || {});
 
         // First, try exact match with trimmed column names
         for (let col of possiblePartyColumns) {
@@ -300,35 +251,34 @@
         }
 
         if (!partyColumn) {
-          showMessage(`❌ Could not find a Party Name column. Available columns: ${availableColumns.join(', ')}`, 'error');
+          showMessage(`Could not find a Party column. Available columns: ${availableColumns.join(', ')}`, 'error');
           return;
         }
 
         // Create unique party buttons from the found column
-        const parties = [...new Set(ledgerData
+        const parties = [...new Set(dyeOrdersData
           .map(row => row[partyColumn])
           .filter(p => p && p.toString().trim() !== "")
         )].sort();
 
         if (parties.length === 0) {
-          showMessage(`❌ No party names found in column "${partyColumn}".`, 'error');
+          showMessage(`No party names found in column "${partyColumn}".`, 'error');
           return;
         }
 
         let buttonsHtml = "";
         parties.forEach(p => {
           const partyName = p.toString(); // Convert to string first
-          buttonsHtml += `<button onclick="searchBills('${partyName.replace(/'/g, "\\'")}')">${partyName}</button>`;
+          buttonsHtml += `<button onclick="searchOrders('${partyName.replace(/'/g, "\\'")}')">${partyName}</button>`;
         });
         document.getElementById("partyButtons").innerHTML = buttonsHtml;
         document.getElementById("partySection").style.display = 'block';
         document.getElementById('sheetSelector').style.display = 'none';
 
-        const balanceMessage = balanceData.length > 0 ? " (Balance sheet also loaded)" : " (No Balance sheet found)";
-        showMessage(`✅ Successfully loaded ${ledgerData.length} records with ${parties.length} unique parties from column "${partyColumn}".${balanceMessage}`);
+        showMessage(`Successfully loaded ${dyeOrdersData.length} records with ${parties.length} unique parties from column "${partyColumn}".`);
 
       } catch (error) {
-        showMessage("❌ Error processing sheet: " + error.message, 'error');
+        showMessage("Error processing sheet: " + error.message, 'error');
       }
     }
 
@@ -353,16 +303,11 @@
           return false;
         }
         
-        // Remove columns that appear to be pivot table artifacts (but keep standalone columns)
+        // Remove columns that appear to be pivot table artifacts
         if (colName.includes('sum of') || colName.includes('count of') || 
             colName.includes('average of') || colName.includes('grand total') ||
             colName.includes('total of') || colName.includes('subtotal')) {
           return false;
-        }
-        
-        // Keep standalone columns like "Price", "Paid", "Balance"
-        if (colName === 'price' || colName === 'paid' || colName === 'balance') {
-          return true;
         }
         
         return true;
@@ -379,11 +324,11 @@
         });
         return cleanedRow;
       }).filter(row => {
-        // Remove rows that are completely empty or contain only pivot table data
+        // Remove rows that are completely empty
         const values = Object.values(row);
         const hasRealData = values.some(val => 
           val !== "" && val !== null && val !== undefined && 
-          !isNaN(val) || (typeof val === 'string' && val.trim() !== "")
+          (!isNaN(val) && val !== 0) || (typeof val === 'string' && val.trim() !== "")
         );
         return hasRealData;
       });
@@ -391,131 +336,20 @@
       return cleanedData;
     }
 
-    // Load Balance sheet data
-    function loadBalanceSheet() {
-      try {
-        const balanceSheetNames = ["Balance", "balance", "BALANCE", "Balances", "balances"];
-        let balanceSheet = null;
-        let balanceSheetName = null;
-
-        // Try to find balance sheet with different names
-        for (let name of balanceSheetNames) {
-          if (workbookData.Sheets[name]) {
-            balanceSheet = workbookData.Sheets[name];
-            balanceSheetName = name;
-            break;
-          }
-        }
-
-        if (balanceSheet) {
-          const rawBalanceData = XLSX.utils.sheet_to_json(balanceSheet, { defval: "" });
-          balanceData = cleanTableData(rawBalanceData); // Clean balance data too
-          console.log(`Balance sheet "${balanceSheetName}" loaded with ${balanceData.length} records`);
-        } else {
-          balanceData = [];
-          console.log("No Balance sheet found");
-        }
-      } catch (error) {
-        console.log("Error loading balance sheet:", error);
-        balanceData = [];
-      }
-    }
-
-    // Get payment data for a party
-    function getPartyPayments(partyName) {
-      if (balanceData.length === 0) {
-        console.log("No balance data available");
-        return { totalPaid: 0, balanceFound: false };
-      }
-
-      console.log("Balance data:", balanceData);
-      console.log("Looking for party:", partyName);
-
-      // Find party column in balance sheet
-      const possiblePartyColumns = [
-        "Party Name", "PartyName", "party_name", "Party", "party",
-        "Customer Name", "CustomerName", "customer_name", "Customer", "customer",
-        "Client Name", "ClientName", "client_name", "Client", "client",
-        "Name", "name", "PARTY NAME", "PARTY", "CLIENT", "CUSTOMER"
-      ];
-
-      let partyColumn = null;
-      const balanceColumns = Object.keys(balanceData[0] || {});
-      console.log("Available balance columns:", balanceColumns);
-
-      // Find party column in balance sheet
-      for (let col of possiblePartyColumns) {
-        const foundCol = balanceColumns.find(availableCol => 
-          availableCol.trim().toLowerCase() === col.toLowerCase()
-        );
-        if (foundCol) {
-          partyColumn = foundCol;
-          console.log("Found party column:", foundCol);
-          break;
-        }
-      }
-
-      if (!partyColumn) {
-        console.log("No party column found in balance sheet");
-        return { totalPaid: 0, balanceFound: false };
-      }
-
-      // Find payment/amount columns - prioritize "Amount Paid" first
-      const possiblePaymentColumns = [
-        "Amount Paid", "amount paid", "AMOUNT PAID", "amount_paid", "AmountPaid",
-        "Paid", "paid", "PAID", "Payment", "payment", "PAYMENT",
-        "Total Paid", "total_paid", "TotalPaid", "TOTAL PAID",
-        "Credit", "credit", "CREDIT", "Amount", "amount", "AMOUNT"
-      ];
-
-      let paymentColumn = null;
-      for (let col of possiblePaymentColumns) {
-        const foundCol = balanceColumns.find(availableCol => 
-          availableCol.trim().toLowerCase() === col.toLowerCase()
-        );
-        if (foundCol) {
-          paymentColumn = foundCol;
-          console.log("Found payment column:", foundCol);
-          break;
-        }
-      }
-
-      if (!paymentColumn) {
-        console.log("No payment column found in balance sheet. Available columns:", balanceColumns);
-        return { totalPaid: 0, balanceFound: false };
-      }
-
-      // Sum all payments for this party
-      const partyPayments = balanceData.filter(row =>
-        row[partyColumn] && row[partyColumn].toString().toLowerCase().trim() === partyName.toLowerCase().trim()
-      );
-
-      console.log("Found payments for party:", partyPayments);
-
-      const totalPaid = partyPayments.reduce((sum, row) => {
-        const payment = parseFloat(row[paymentColumn]) || 0;
-        console.log(`Payment entry: ${row[paymentColumn]} -> ${payment}`);
-        return sum + payment;
-      }, 0);
-
-      console.log("Total paid calculated:", totalPaid);
-      return { totalPaid, balanceFound: true };
-    }
-
-    // Search bills by party
-    function searchBills(partyName) {
+    // Search orders by party
+    function searchOrders(partyName) {
       currentParty = partyName;
       
       // Find which column contains party names
       const possiblePartyColumns = [
-        "Party Name", "PartyName", "party_name", "Party", "party",
-        "Customer Name", "CustomerName", "customer_name", "Customer", "customer",
-        "Client Name", "ClientName", "client_name", "Client", "client",
-        "Name", "name", "PARTY NAME", "PARTY", "CLIENT", "CUSTOMER"
+        "Party", "party", "PARTY", "Party Name", "PartyName", "party_name",
+        "Customer", "customer", "CUSTOMER", "Customer Name", "CustomerName", "customer_name",
+        "Client", "client", "CLIENT", "Client Name", "ClientName", "client_name",
+        "Name", "name", "NAME"
       ];
 
       let partyColumn = null;
-      const availableColumns = Object.keys(ledgerData[0] || {});
+      const availableColumns = Object.keys(dyeOrdersData[0] || {});
 
       // First, try exact match with trimmed column names
       for (let col of possiblePartyColumns) {
@@ -539,12 +373,12 @@
         }
       }
 
-      const results = ledgerData.filter(row =>
+      const results = dyeOrdersData.filter(row =>
         row[partyColumn] && row[partyColumn].toString().toLowerCase() === partyName.toLowerCase()
       );
 
       if (results.length === 0) {
-        document.getElementById('results').innerHTML = "❌ No dye orders found for this party.";
+        document.getElementById('results').innerHTML = "No dye orders found for this party.";
         document.getElementById('selectionArea').style.display = 'none';
         document.getElementById('printBtn').style.display = 'none';
         return;
@@ -552,54 +386,72 @@
 
       currentPartyResults = results;
       
-      // Show selection area and populate bill checkboxes
+      // Show selection area and populate order checkboxes
       document.getElementById('selectionArea').style.display = 'block';
-      populateBillCheckboxes(results);
+      populateOrderCheckboxes(results);
       
       // Reset selection to "all"
-      document.querySelector('input[name="billSelection"][value="all"]').checked = true;
-      toggleBillSelection();
+      document.querySelector('input[name="orderSelection"][value="all"]').checked = true;
+      toggleOrderSelection();
       
       // Display results
       displayResults(results);
     }
 
-    // Populate bill checkboxes
-    function populateBillCheckboxes(results) {
+    // Populate order checkboxes
+    function populateOrderCheckboxes(results) {
       let checkboxHtml = "";
       results.forEach((row, index) => {
-        // Look for actual order number in multiple possible column names
-        const possibleOrderColumns = [
-          "Order No", "OrderNo", "order_no", "Order Number", "OrderNumber", "order_number",
-          "ID", "id", "Order_No", "orderno", "Order#", "order#", "Bill No", "BillNo", "bill_no"
-        ];
-
-        let orderNumber = null;
+        // Create a description for each order
+        let description = `Order ${index + 1}`;
+        
+        // Try to get order number
+        const possibleOrderColumns = ["Order No", "OrderNo", "order_no", "Order Number", "OrderNumber", "ID", "id"];
+        let orderValue = null;
         for (let col of possibleOrderColumns) {
           if (row[col] && row[col].toString().trim() !== "") {
-            orderNumber = row[col];
+            orderValue = row[col];
             break;
           }
         }
 
-        if (!orderNumber) {
-          orderNumber = index + 1; // fallback to row number
+        // Try to get date for better identification
+        const possibleDateColumns = ["Date", "date", "DATE", "Order Date", "Transaction Date"];
+        let dateValue = null;
+        for (let col of possibleDateColumns) {
+          if (row[col]) {
+            dateValue = row[col];
+            break;
+          }
+        }
+
+        if (orderValue) {
+          description = `Order ${orderValue}`;
+        }
+
+        if (dateValue) {
+          // Format date if it's a number (Excel date)
+          if (typeof dateValue === "number" && dateValue > 1000) {
+            const excelDate = new Date((dateValue - 25569) * 86400 * 1000);
+            dateValue = excelDate.toLocaleDateString('en-GB');
+          }
+          description += ` - ${dateValue}`;
         }
         
         checkboxHtml += `
-          <label class="bill-checkbox">
+          <label class="order-checkbox">
             <input type="checkbox" value="${index}"> 
-            Order ${orderNumber}
+            ${description}
           </label>
         `;
       });
-      document.getElementById('billCheckboxes').innerHTML = checkboxHtml;
+      document.getElementById('orderCheckboxes').innerHTML = checkboxHtml;
     }
 
-    // Toggle bill selection method
-    function toggleBillSelection() {
-      const isSpecific = document.querySelector('input[name="billSelection"][value="specific"]').checked;
-      document.getElementById('specificBillsArea').style.display = isSpecific ? 'block' : 'none';
+    // Toggle order selection method
+    function toggleOrderSelection() {
+      const isSpecific = document.querySelector('input[name="orderSelection"][value="specific"]').checked;
+      document.getElementById('specificOrdersArea').style.display = isSpecific ? 'block' : 'none';
       
       if (!isSpecific) {
         // If "all" is selected, apply immediately
@@ -611,18 +463,18 @@
     function applySelection() {
       if (currentPartyResults.length === 0) return;
       
-      const isSpecific = document.querySelector('input[name="billSelection"][value="specific"]').checked;
+      const isSpecific = document.querySelector('input[name="orderSelection"][value="specific"]').checked;
       let filteredResults = [];
       
       if (isSpecific) {
-        // Get selected bills from checkboxes only
-        const selectedCheckboxes = Array.from(document.querySelectorAll('#billCheckboxes input[type="checkbox"]:checked'));
+        // Get selected orders from checkboxes only
+        const selectedCheckboxes = Array.from(document.querySelectorAll('#orderCheckboxes input[type="checkbox"]:checked'));
         
         // Filter by selected checkboxes
         const selectedIndices = selectedCheckboxes.map(cb => parseInt(cb.value));
         filteredResults = currentPartyResults.filter((row, index) => selectedIndices.includes(index));
       } else {
-        // Include all bills
+        // Include all orders
         filteredResults = currentPartyResults;
       }
       
@@ -638,7 +490,7 @@
     // Display results in table
     function displayResults(results) {
       if (results.length === 0) {
-        document.getElementById('results').innerHTML = "❌ No dye orders found matching your selection.";
+        document.getElementById('results').innerHTML = "No dye orders found matching your selection.";
         document.getElementById('printBtn').style.display = 'none';
         return;
       }
@@ -711,7 +563,7 @@
       // Add balance summary using the totals we calculated
       html += `
         <div style="margin-top: 20px; padding: 15px; border: 2px solid #333; border-radius: 8px; background: #f0f8ff;">
-          <h3 style="margin-top: 0; color: #333;">🎨 Dye Orders Summary for ${currentParty}</h3>
+          <h3 style="margin-top: 0; color: #333;">Dye Orders Summary for ${currentParty}</h3>
           <table style="width: auto; margin: 0;">
             <tr>
               <td style="padding: 8px; font-weight: bold; text-align: right; border: 1px solid #ddd;">Total Price:</td>
