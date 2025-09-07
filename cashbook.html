@@ -51,7 +51,7 @@
     .debit { color: #d32f2f; font-weight: bold; }
     .credit { color: #388e3c; font-weight: bold; }
     @media print {
-      h1, h2, h3, button, #partyButtons, .selection-area, #selectionArea, #printBtn, .sheet-selector, #messages { display: none !important; }
+      h1, h2, h3, button, .selection-area, #selectionArea, #printBtn, .sheet-selector, #messages { display: none !important; }
       body { margin: 0; font-size: 12px; }
       
       @page {
@@ -85,6 +85,8 @@
 </head>
 <body>
   <h1>Find Cashbook Entries by Party</h1>
+
+  <!-- Auto-loading Excel from directory -->
 
   <!-- Sheet Selector (hidden initially) -->
   <div id="sheetSelector" class="sheet-selector" style="display: none;">
@@ -124,7 +126,7 @@
   </div>
 
   <!-- Print Button -->
-  <button id="printBtn" class="print-btn" onclick="printResults()" style="display: none;">🖨️ Print Results</button>
+  <button id="printBtn" class="print-btn" onclick="printResults()" style="display: none;">Print Results</button>
 
   <!-- Results -->
   <h2>Results:</h2>
@@ -136,22 +138,25 @@
     let currentPartyResults = [];
     let currentParty = "";
 
+    // Show messages
     function showMessage(text, type = 'info') {
       const messagesDiv = document.getElementById('messages');
       const className = type === 'error' ? 'error-message' : 'success-message';
       messagesDiv.innerHTML = `<div class="${className}">${text}</div>`;
     }
 
-    // Auto-load Excel file on page load
+    // Auto-load Excel file from directory
     async function autoLoadExcel() {
       try {
-        const response = await fetch("Factory_Khata_August.xlsx"); // adjust path if in subfolder
+        const response = await fetch("Factory_Khata_August.xlsx");
+        if (!response.ok) throw new Error("File not found - make sure Factory_Khata_August.xlsx is in the same directory");
+        
         const arrayBuffer = await response.arrayBuffer();
         workbookData = XLSX.read(arrayBuffer, { type: "array" });
 
         const sheetNames = workbookData.SheetNames;
         if (sheetNames.length === 0) {
-          showMessage("❌ No sheets found in data.xlsx.", "error");
+          showMessage("No sheets found in the Excel file.", "error");
           return;
         }
 
@@ -162,21 +167,26 @@
         }
 
       } catch (err) {
-        showMessage("❌ Could not load Excel file automatically: " + err.message, "error");
+        showMessage("Could not load Factory_Khata_August.xlsx from directory: " + err.message, "error");
       }
     }
+
     window.addEventListener("DOMContentLoaded", autoLoadExcel);
 
+    // Populate sheet selector dropdown
     function populateSheetSelector(sheetNames) {
       const dropdown = document.getElementById('sheetDropdown');
       dropdown.innerHTML = '<option value="">-- Choose a sheet --</option>';
+      
       sheetNames.forEach(name => {
         dropdown.innerHTML += `<option value="${name}">${name}</option>`;
       });
+
       document.getElementById('sheetSelector').style.display = 'block';
-      showMessage("📋 Multiple sheets found. Please select a sheet to continue.");
+      showMessage("Multiple sheets found. Please select a sheet to continue.");
     }
 
+    // Select and process a sheet
     function selectSheet() {
       const selectedSheet = document.getElementById('sheetDropdown').value;
       if (selectedSheet) {
@@ -184,8 +194,409 @@
       }
     }
 
-    // (rest of your processSheet, cleanTableData, searchEntries, etc. stay the same)
-    // ... [UNCHANGED FUNCTIONS HERE: processSheet, cleanTableData, searchEntries, etc.] ...
+    // Process the selected sheet
+    function processSheet(sheetName) {
+      try {
+        const sheet = workbookData.Sheets[sheetName];
+        if (!sheet) {
+          showMessage(`Sheet "${sheetName}" not found.`, 'error');
+          return;
+        }
+
+        // Convert sheet to JSON
+        const rawData = XLSX.utils.sheet_to_json(sheet, { defval: "" });
+
+        if (rawData.length === 0) {
+          showMessage("The selected sheet appears to be empty.", 'error');
+          return;
+        }
+
+        // Clean the data - remove pivot table and empty columns
+        cashbookData = cleanTableData(rawData);
+
+        if (cashbookData.length === 0) {
+          showMessage("No valid table data found after cleaning.", 'error');
+          return;
+        }
+
+        // Find the Party Name column (try different variations)
+        const possiblePartyColumns = [
+          "Party", "party", "PARTY", "Party Name", "PartyName", "party_name",
+          "Customer", "customer", "CUSTOMER", "Customer Name", "CustomerName", "customer_name",
+          "Client", "client", "CLIENT", "Client Name", "ClientName", "client_name",
+          "Name", "name", "NAME", "Account", "account", "ACCOUNT"
+        ];
+
+        let partyColumn = null;
+        const availableColumns = Object.keys(cashbookData[0] || {});
+
+        // First, try exact match with trimmed column names
+        for (let col of possiblePartyColumns) {
+          const foundCol = availableColumns.find(availableCol => availableCol.trim() === col);
+          if (foundCol) {
+            partyColumn = foundCol;
+            break;
+          }
+        }
+
+        // If no exact match, try case-insensitive match with trimmed names
+        if (!partyColumn) {
+          for (let col of possiblePartyColumns) {
+            const foundCol = availableColumns.find(availableCol => 
+              availableCol.trim().toLowerCase() === col.toLowerCase()
+            );
+            if (foundCol) {
+              partyColumn = foundCol;
+              break;
+            }
+          }
+        }
+
+        if (!partyColumn) {
+          showMessage(`Could not find a Party column. Available columns: ${availableColumns.join(', ')}`, 'error');
+          return;
+        }
+
+        // Create unique party buttons from the found column
+        const parties = [...new Set(cashbookData
+          .map(row => row[partyColumn])
+          .filter(p => p && p.toString().trim() !== "")
+        )].sort();
+
+        if (parties.length === 0) {
+          showMessage(`No party names found in column "${partyColumn}".`, 'error');
+          return;
+        }
+
+        let buttonsHtml = "";
+        parties.forEach(p => {
+          const partyName = p.toString(); // Convert to string first
+          buttonsHtml += `<button onclick="searchEntries('${partyName.replace(/'/g, "\\'")}')">${partyName}</button>`;
+        });
+        document.getElementById("partyButtons").innerHTML = buttonsHtml;
+        document.getElementById("partySection").style.display = 'block';
+        document.getElementById('sheetSelector').style.display = 'none';
+
+        showMessage(`Successfully loaded ${cashbookData.length} records with ${parties.length} unique parties from column "${partyColumn}".`);
+
+      } catch (error) {
+        showMessage("Error processing sheet: " + error.message, 'error');
+      }
+    }
+
+    // Clean table data - remove empty columns and pivot table artifacts
+    function cleanTableData(rawData) {
+      if (rawData.length === 0) return rawData;
+
+      // Get all column names
+      const allColumns = Object.keys(rawData[0]);
+      
+      // Filter out unwanted columns
+      const validColumns = allColumns.filter(col => {
+        const colName = col.toString().toLowerCase();
+        
+        // Remove empty columns (Excel artifacts)
+        if (colName.includes('__empty') || colName.includes('empty')) {
+          return false;
+        }
+        
+        // Remove columns that are just whitespace or numbers
+        if (colName.trim() === '' || /^\d+$/.test(colName)) {
+          return false;
+        }
+        
+        // Remove columns that appear to be pivot table artifacts
+        if (colName.includes('sum of') || colName.includes('count of') || 
+            colName.includes('average of') || colName.includes('grand total') ||
+            colName.includes('total of') || colName.includes('subtotal')) {
+          return false;
+        }
+        
+        return true;
+      });
+
+      console.log("Original columns:", allColumns);
+      console.log("Filtered columns:", validColumns);
+
+      // Create cleaned data with only valid columns
+      const cleanedData = rawData.map(row => {
+        const cleanedRow = {};
+        validColumns.forEach(col => {
+          cleanedRow[col] = row[col];
+        });
+        return cleanedRow;
+      }).filter(row => {
+        // Remove rows that are completely empty
+        const values = Object.values(row);
+        const hasRealData = values.some(val => 
+          val !== "" && val !== null && val !== undefined && 
+          (!isNaN(val) && val !== 0) || (typeof val === 'string' && val.trim() !== "")
+        );
+        return hasRealData;
+      });
+
+      return cleanedData;
+    }
+
+    // Search entries by party
+    function searchEntries(partyName) {
+      currentParty = partyName;
+      
+      // Find which column contains party names
+      const possiblePartyColumns = [
+        "Party", "party", "PARTY", "Party Name", "PartyName", "party_name",
+        "Customer", "customer", "CUSTOMER", "Customer Name", "CustomerName", "customer_name",
+        "Client", "client", "CLIENT", "Client Name", "ClientName", "client_name",
+        "Name", "name", "NAME", "Account", "account", "ACCOUNT"
+      ];
+
+      let partyColumn = null;
+      const availableColumns = Object.keys(cashbookData[0] || {});
+
+      // First, try exact match with trimmed column names
+      for (let col of possiblePartyColumns) {
+        const foundCol = availableColumns.find(availableCol => availableCol.trim() === col);
+        if (foundCol) {
+          partyColumn = foundCol;
+          break;
+        }
+      }
+
+      // If no exact match, try case-insensitive match with trimmed names
+      if (!partyColumn) {
+        for (let col of possiblePartyColumns) {
+          const foundCol = availableColumns.find(availableCol => 
+            availableCol.trim().toLowerCase() === col.toLowerCase()
+          );
+          if (foundCol) {
+            partyColumn = foundCol;
+            break;
+          }
+        }
+      }
+
+      const results = cashbookData.filter(row =>
+        row[partyColumn] && row[partyColumn].toString().toLowerCase() === partyName.toLowerCase()
+      );
+
+      if (results.length === 0) {
+        document.getElementById('results').innerHTML = "No cashbook entries found for this party.";
+        document.getElementById('selectionArea').style.display = 'none';
+        document.getElementById('printBtn').style.display = 'none';
+        return;
+      }
+
+      currentPartyResults = results;
+      
+      // Show selection area and populate entry checkboxes
+      document.getElementById('selectionArea').style.display = 'block';
+      populateEntryCheckboxes(results);
+      
+      // Reset selection to "all"
+      document.querySelector('input[name="entrySelection"][value="all"]').checked = true;
+      toggleEntrySelection();
+      
+      // Display results
+      displayResults(results);
+    }
+
+    // Populate entry checkboxes
+    function populateEntryCheckboxes(results) {
+      let checkboxHtml = "";
+      results.forEach((row, index) => {
+        // Create a description for each entry
+        let description = `Entry ${index + 1}`;
+        
+        // Try to get date for better identification
+        const possibleDateColumns = ["Date", "date", "DATE", "Entry Date", "Transaction Date"];
+        let dateValue = null;
+        for (let col of possibleDateColumns) {
+          if (row[col]) {
+            dateValue = row[col];
+            break;
+          }
+        }
+
+        // Try to get description
+        const possibleDescColumns = ["Description", "description", "DESC", "Particulars", "particulars", "Details", "details"];
+        let descValue = null;
+        for (let col of possibleDescColumns) {
+          if (row[col] && row[col].toString().trim() !== "") {
+            descValue = row[col].toString().substring(0, 30); // Limit length
+            break;
+          }
+        }
+
+        if (dateValue) {
+          // Format date if it's a number (Excel date)
+          if (typeof dateValue === "number" && dateValue > 1000) {
+            const excelDate = new Date((dateValue - 25569) * 86400 * 1000);
+            dateValue = excelDate.toLocaleDateString('en-GB');
+          }
+          description = `${dateValue}`;
+        }
+        
+        if (descValue) {
+          description += ` - ${descValue}`;
+        }
+        
+        checkboxHtml += `
+          <label class="entry-checkbox">
+            <input type="checkbox" value="${index}"> 
+            ${description}
+          </label>
+        `;
+      });
+      document.getElementById('entryCheckboxes').innerHTML = checkboxHtml;
+    }
+
+    // Toggle entry selection method
+    function toggleEntrySelection() {
+      const isSpecific = document.querySelector('input[name="entrySelection"][value="specific"]').checked;
+      document.getElementById('specificEntriesArea').style.display = isSpecific ? 'block' : 'none';
+      
+      if (!isSpecific) {
+        // If "all" is selected, apply immediately
+        applySelection();
+      }
+    }
+
+    // Apply selection and filter results
+    function applySelection() {
+      if (currentPartyResults.length === 0) return;
+      
+      const isSpecific = document.querySelector('input[name="entrySelection"][value="specific"]').checked;
+      let filteredResults = [];
+      
+      if (isSpecific) {
+        // Get selected entries from checkboxes only
+        const selectedCheckboxes = Array.from(document.querySelectorAll('#entryCheckboxes input[type="checkbox"]:checked'));
+        
+        // Filter by selected checkboxes
+        const selectedIndices = selectedCheckboxes.map(cb => parseInt(cb.value));
+        filteredResults = currentPartyResults.filter((row, index) => selectedIndices.includes(index));
+      } else {
+        // Include all entries
+        filteredResults = currentPartyResults;
+      }
+      
+      displayResults(filteredResults);
+    }
+
+    // Find column key with case-insensitive matching
+    function findColumnKey(row, targetColumnName) {
+      const keys = Object.keys(row);
+      return keys.find(key => key.toLowerCase().trim() === targetColumnName.toLowerCase()) || null;
+    }
+
+    // Display results in table
+    function displayResults(results) {
+      if (results.length === 0) {
+        document.getElementById('results').innerHTML = "No cashbook entries found matching your selection.";
+        document.getElementById('printBtn').style.display = 'none';
+        return;
+      }
+
+      // Build table - ensure we show ALL columns
+      const allColumns = Object.keys(results[0]);
+      
+      let html = `
+        <div class="print-company-header">Al-Hamd Dyeing - Cashbook</div>
+        <div class="print-party-name">${currentParty}</div>
+        <h3 style="display: none;">Cashbook Entries for ${currentParty} (${results.length} entries)</h3>
+        <table><tr>`;
+      
+      // Display ALL column headers
+      allColumns.forEach(key => {
+        html += `<th>${key}</th>`;
+      });
+      html += "</tr>";
+
+      // Initialize totals for debit and credit
+      let totalDebit = 0, totalCredit = 0;
+
+      // Display all data rows
+      results.forEach(row => {
+        html += "<tr>";
+        allColumns.forEach(key => {
+          let value = row[key];
+          
+          // Format dates properly (Excel dates come as numbers)
+          if (key.toLowerCase().includes('date') && typeof value === "number" && value > 1000) {
+            // Convert Excel date serial number to proper date
+            const excelDate = new Date((value - 25569) * 86400 * 1000);
+            value = excelDate.toLocaleDateString('en-GB'); // DD/MM/YYYY format
+          } else if (typeof value === "number" && !key.toLowerCase().includes('date')) {
+            value = value.toFixed(2);
+          }
+          
+          // Add color classes for debit/credit columns
+          let cellClass = "";
+          const keyLower = key.toLowerCase().trim();
+          if (keyLower === "debit" && value > 0) {
+            cellClass = "class='debit'";
+          } else if (keyLower === "credit" && value > 0) {
+            cellClass = "class='credit'";
+          }
+          
+          html += `<td ${cellClass}>${value || ""}</td>`;
+        });
+        html += "</tr>";
+
+        // Calculate totals for debit and credit columns (case-insensitive)
+        const debitKey = findColumnKey(row, "debit");
+        const creditKey = findColumnKey(row, "credit");
+
+        totalDebit += Number(debitKey ? row[debitKey] : 0) || 0;
+        totalCredit += Number(creditKey ? row[creditKey] : 0) || 0;
+      });
+
+      // Totals row - show totals for debit and credit columns, empty for others
+      html += "<tr class='totals'>";
+      allColumns.forEach(key => {
+        const keyLower = key.toLowerCase().trim();
+        if (keyLower === "debit") {
+          html += `<td class='debit'>${totalDebit.toFixed(2)}</td>`;
+        } else if (keyLower === "credit") {
+          html += `<td class='credit'>${totalCredit.toFixed(2)}</td>`;
+        } else {
+          html += "<td></td>";
+        }
+      });
+      html += "</tr>";
+
+      html += "</table>";
+
+      // Add balance summary
+      const netBalance = totalDebit - totalCredit;
+      const balanceType = netBalance > 0 ? "Debit Balance" : netBalance < 0 ? "Credit Balance" : "Balanced";
+      const balanceColor = netBalance > 0 ? "#ffcccc" : netBalance < 0 ? "#ccffcc" : "#ffffcc";
+
+      html += `
+        <div style="margin-top: 20px; padding: 15px; border: 2px solid #333; border-radius: 8px; background: #f0f8ff;">
+          <h3 style="margin-top: 0; color: #333;">Cashbook Summary for ${currentParty}</h3>
+          <table style="width: auto; margin: 0;">
+            <tr>
+              <td style="padding: 8px; font-weight: bold; text-align: right; border: 1px solid #ddd;">Total Debit:</td>
+              <td style="padding: 8px; text-align: right; border: 1px solid #ddd; background: #ffe6e6;" class="debit">${totalDebit.toFixed(2)}</td>
+            </tr>
+            <tr>
+              <td style="padding: 8px; font-weight: bold; text-align: right; border: 1px solid #ddd;">Total Credit:</td>
+              <td style="padding: 8px; text-align: right; border: 1px solid #ddd; background: #e6ffe6;" class="credit">${totalCredit.toFixed(2)}</td>
+            </tr>
+            <tr class="totals">
+              <td style="padding: 8px; font-weight: bold; text-align: right; border: 2px solid #333;">${balanceType}:</td>
+              <td style="padding: 8px; text-align: right; border: 2px solid #333; background: ${balanceColor}; font-weight: bold; font-size: 16px;">
+                ${Math.abs(netBalance).toFixed(2)}
+              </td>
+            </tr>
+          </table>
+        </div>
+      `;
+
+      document.getElementById('results').innerHTML = html;
+      document.getElementById('printBtn').style.display = 'inline-block';
+    }
 
     // Print results
     function printResults() {
