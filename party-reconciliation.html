@@ -119,13 +119,13 @@
 
   <div class="file-section">
     <h3>Step 1: Load Bills/Ledger File</h3>
-    <p>This file should be automatically loaded: Factory_Khata_August.xlsx</p>
+    <p>This file should be automatically loaded: Factory_Khata_September.xlsx</p>
     <div id="billsStatus" class="file-status"></div>
   </div>
 
   <div class="file-section">
     <h3>Step 2: Load Cashbook File</h3>
-    <p>Select the cashbook sheet from Factory_Khata_August.xlsx</p>
+    <p>Select the cashbook sheet from Factory_Khata_September.xlsx</p>
     <div id="cashbookSheetSelector" style="display: none;">
       <label><strong>Select Cashbook Sheet: </strong></label>
       <select id="cashbookSheet" onchange="loadCashbookSheet()">
@@ -156,21 +156,24 @@
 
     async function autoLoadExcel() {
       try {
-        const response = await fetch("Factory_Khata_August.xlsx");
+        const response = await fetch("Factory_Khata_September.xlsx");
         if (!response.ok) throw new Error("File not found");
         
         const arrayBuffer = await response.arrayBuffer();
         workbookData = XLSX.read(arrayBuffer, { type: "array" });
 
-        // Process bills from all sheets except Balance and Cashbook
-        const excludeSheets = ['balance', 'cashbook', 'cash book'];
-        workbookData.SheetNames.forEach(sheetName => {
-          if (!excludeSheets.includes(sheetName.toLowerCase())) {
-            processBillSheet(sheetName);
-          }
-        });
+        // Process bills ONLY from Ledger sheet
+        const ledgerSheet = workbookData.SheetNames.find(name => 
+          name.toLowerCase().trim() === 'ledger'
+        );
+        
+        if (ledgerSheet) {
+          processBillSheet(ledgerSheet);
+        } else {
+          console.log('No Ledger sheet found. Available sheets:', workbookData.SheetNames);
+        }
 
-        document.getElementById('billsStatus').innerHTML = `<span class="success">✓ Loaded ${billsData.length} bills from ${workbookData.SheetNames.length} sheets</span>`;
+        document.getElementById('billsStatus').innerHTML = `<span class="success">✓ Loaded ${billsData.length} bills from Ledger sheet</span>`;
 
         // Load cashflow data (opening balances)
         loadCashflowData();
@@ -263,7 +266,7 @@
               billsData.push({
                 party: party,
                 date: parseDate(row.Date || row.date || row.DATE),
-                description: billNo ? `Bill ${billNo}` : `Bill (${sheetName})`,
+                description: billNo ? `Bill ${billNo}` : 'Bill',
                 amount: amount,
                 type: 'debit'
               });
@@ -533,5 +536,4 @@
     }
   </script>
 </body>
-
 </html>
