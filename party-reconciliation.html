@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Party Ledger Reconciliation - Al-Hamd Dyeing</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: white; }
+    h1 { color: darkblue; }
+    button { margin: 5px; padding: 8px 12px; border-radius: 5px; border: 1px solid #ccc; cursor: pointer; }
+    button:hover { background: #f0f0f0; }
+    button.print-btn { background: #4CAF50; color: white; }
+    button.print-btn:hover { background: #45a049; }
+    
+    .file-section {
+      background: #f9f9f9;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      border: 1px solid #ddd;
+    }
+    
+    .file-section h3 {
+      margin-top: 0;
+      color: #333;
+    }
+    
+    .file-status {
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    
+    .success { color: green; }
+    .error { color: red; }
+    
+    #partySection {
+      margin: 20px 0;
+    }
+    
+    #partyButtons button {
+      margin: 5px;
+    }
+    
+    .ledger-container {
+      margin-top: 20px;
+    }
+    
+    .ledger-header {
+      text-align: center;
+      border: 2px solid #333;
+      padding: 20px;
+      margin-bottom: 20px;
+      background: #f9e6e6;
+      border-radius: 5px;
+    }
+    
+    .ledger-header h2 {
+      margin: 0 0 15px 0;
+      font-size: 24px;
+      color: #8b4654;
+    }
+    
+    .company-info {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      text-align: left;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    
+    .info-row {
+      display: flex;
+      gap: 10px;
+    }
+    
+    .info-label {
+      font-weight: bold;
+      color: #8b4654;
+      min-width: 120px;
+    }
+    
+    table { 
+      border-collapse: collapse; 
+      width: 100%; 
+      margin-top: 20px;
+      border: 2px solid #333;
+    }
+    
+    th, td { 
+      border: 1px solid #333; 
+      padding: 8px; 
+      text-align: center; 
+    }
+    
+    th { 
+      background-color: #f9e6e6; 
+      font-weight: bold;
+      color: #8b4654;
+    }
+    
+    .opening-balance-row, .totals { 
+      font-weight: bold; 
+      background: #f9e6e6; 
+    }
+    
+    .debit-col { color: #d32f2f; }
+    .credit-col { color: #388e3c; }
+    
+    @media print {
+      body { margin: 0; }
+      h1, button, .file-section, #partySection { display: none !important; }
+      @page { margin: 0.5in; size: A4; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Party Ledger Reconciliation</h1>
+
+  <div class="file-section">
+    <h3>Step 1: Load Bills/Ledger File</h3>
+    <p>This file should be automatically loaded: Factory_Khata_September.xlsx</p>
+    <div id="billsStatus" class="file-status"></div>
+  </div>
+
+  <div class="file-section">
+    <h3>Step 2: Load Cashbook File</h3>
+    <p>Select the cashbook sheet from Factory_Khata_September.xlsx</p>
+    <div id="cashbookSheetSelector" style="display: none;">
+      <label><strong>Select Cashbook Sheet: </strong></label>
+      <select id="cashbookSheet" onchange="loadCashbookSheet()">
+        <option value="">-- Choose sheet --</option>
+      </select>
+    </div>
+    <div id="cashbookStatus" class="file-status"></div>
+  </div>
+
+  <div id="partySection" style="display: none;">
+    <h3>Step 3: Select Party to View Ledger</h3>
+    <div id="partyButtons"></div>
+  </div>
+
+  <button id="printBtn" class="print-btn" onclick="window.print()" style="display: none;">Print Ledger</button>
+
+  <div id="results"></div>
+
+  <script>
+    let workbookData = null;
+    let billsData = [];
+    let cashbookData = [];
+    let cashflowData = {};
+    let allParties = new Set();
+
+    // Auto-load on page load
+    window.addEventListener("DOMContentLoaded", autoLoadExcel);
+
+    async function autoLoadExcel() {
+      try {
+        const response = await fetch("Factory_Khata_September.xlsx");
+        if (!response.ok) throw new Error("File not found");
+        
+        const arrayBuffer = await response.arrayBuffer();
+        workbookData = XLSX.read(arrayBuffer, { type: "array" });
+
+        // Process bills from all sheets except Balance and Cashbook
+        const excludeSheets = ['balance', 'cashbook', 'cash book'];
+        workbookData.SheetNames.forEach(sheetName => {
+          if (!excludeSheets.includes(sheetName.toLowerCase())) {
+            processBillSheet(sheetName);
+          }
+        });
+
+        document.getElementById('billsStatus').innerHTML = `<span class="success">✓ Loaded ${billsData.length} bills from ${workbookData.SheetNames.length} sheets</span>`;
+
+        // Load cashflow data (opening balances)
+        loadCashflowData();
+
+        // Show cashbook sheet selector
+        populateCashbookSelector();
+
+      } catch (err) {
+        document.getElementById('billsStatus').innerHTML = `<span class="error">✗ Error loading file: ${err.message}</span>`;
+      }
+    }
+
+    function loadCashflowData() {
+      try {
+        // Look for Cashflow sheet (case-insensitive)
+        const cashflowSheetName = workbookData.SheetNames.find(name => 
+          name.toLowerCase().trim() === 'cashflow' || 
+          name.toLowerCase().trim() === 'cash flow' ||
+          name.toLowerCase().trim().includes('cashflow')
+        );
+
+        if (!cashflowSheetName) {
+          console.log('No Cashflow sheet found. Available sheets:', workbookData.SheetNames);
+          return;
+        }
+
+        console.log('Found Cashflow sheet:', cashflowSheetName);
+
+        const worksheet = workbookData.Sheets[cashflowSheetName];
+        const rawData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+        
+        console.log('Raw cashflow data:', rawData);
+
+        // Process cashflow data - store opening balance per party
+        rawData.forEach(row => {
+          console.log('Processing row:', row);
+          
+          // Find party name - try "Party Names" first (from your screenshot)
+          const party = (
+            row['Party Names'] || row['Party Name'] || row['PartyName'] || 
+            row['Party'] || row['party'] || row['PARTY'] || 
+            row['Name'] || row['name']
+          );
+
+          if (party && party.toString().trim() !== '') {
+            const partyUpper = party.toString().trim().toUpperCase();
+            
+            // Find credit amount - try exact "Credit" column first
+            const amount = parseFloat(
+              row['Credit'] || row['credit'] || row['CREDIT'] ||
+              row['Amount'] || row['amount'] || row['AMOUNT'] || 0
+            );
+
+            // Only store if amount is valid and not #N/A or similar
+            if (amount > 0 && !isNaN(amount)) {
+              cashflowData[partyUpper] = amount;
+              console.log(`✓ Loaded opening balance for ${partyUpper}: ${amount}`);
+            }
+          }
+        });
+
+        console.log('Final cashflow data loaded:', cashflowData);
+        
+        // Update status message
+        const cashflowCount = Object.keys(cashflowData).length;
+        if (cashflowCount > 0) {
+          document.getElementById('billsStatus').innerHTML += `<br><span class="success">✓ Loaded opening balances for ${cashflowCount} parties from Cashflow sheet</span>`;
+        }
+
+      } catch (err) {
+        console.error('Error loading cashflow data:', err);
+      }
+    }
+
+    function processBillSheet(sheetName) {
+      try {
+        const worksheet = workbookData.Sheets[sheetName];
+        const rawData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+        const cleanedData = cleanTableData(rawData);
+
+        cleanedData.forEach(row => {
+          const party = findPartyName(row);
+          if (party) {
+            allParties.add(party);
+            
+            const billNo = row['Bill Number'] || row['Bill Number'] || row.BillNo || row.billNo || '';
+            const amount = parseFloat(row.Amount || row.amount || row.billing || row.Billing || row.AMOUNT || 0);
+            
+            if (amount > 0) {
+              billsData.push({
+                party: party,
+                date: parseDate(row.Date || row.date || row.DATE),
+                description: billNo ? `Bill ${billNo}` : `Bill (${sheetName})`,
+                amount: amount,
+                type: 'debit'
+              });
+            }
+          }
+        });
+      } catch (err) {
+        console.log(`Error processing sheet ${sheetName}:`, err);
+      }
+    }
+
+    function populateCashbookSelector() {
+      const selector = document.getElementById('cashbookSheet');
+      const selectorDiv = document.getElementById('cashbookSheetSelector');
+      
+      selector.innerHTML = '<option value="">-- Choose sheet --</option>';
+      workbookData.SheetNames.forEach(name => {
+        selector.innerHTML += `<option value="${name}">${name}</option>`;
+      });
+      
+      selectorDiv.style.display = 'block';
+      
+      // Auto-select if there's a sheet named "Cashbook" or similar
+      const cashbookSheet = workbookData.SheetNames.find(name => 
+        name.toLowerCase().includes('cash') || name.toLowerCase().includes('payment')
+      );
+      if (cashbookSheet) {
+        selector.value = cashbookSheet;
+        loadCashbookSheet();
+      }
+    }
+
+    function loadCashbookSheet() {
+      const sheetName = document.getElementById('cashbookSheet').value;
+      if (!sheetName) return;
+
+      try {
+        const worksheet = workbookData.Sheets[sheetName];
+        const rawData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+        const cleanedData = cleanTableData(rawData);
+
+        cashbookData = [];
+        cleanedData.forEach(row => {
+          const party = findPartyName(row);
+          if (party) {
+            allParties.add(party);
+            
+            const credit = parseFloat(row.Credit || row.credit || row.CREDIT || 0);
+            if (credit > 0) {
+              cashbookData.push({
+                party: party,
+                date: parseDate(row.Date || row.date || row.DATE),
+                description: row.Description || row.description || row.DESCRIPTION || row.Particulars || row.particulars || 'Payment',
+                amount: credit,
+                type: 'credit'
+              });
+            }
+          }
+        });
+
+        document.getElementById('cashbookStatus').innerHTML = `<span class="success">✓ Loaded ${cashbookData.length} payments from ${sheetName}</span>`;
+        updatePartyList();
+
+      } catch (err) {
+        document.getElementById('cashbookStatus').innerHTML = `<span class="error">✗ Error loading cashbook: ${err.message}</span>`;
+      }
+    }
+
+    function cleanTableData(rawData) {
+      if (rawData.length === 0) return rawData;
+
+      const allColumns = Object.keys(rawData[0]);
+      const validColumns = allColumns.filter(col => {
+        const colName = col.toString().toLowerCase();
+        return !colName.includes('__empty') && 
+               !colName.includes('empty') && 
+               colName.trim() !== '' && 
+               !/^\d+$/.test(colName);
+      });
+
+      return rawData.map(row => {
+        const cleanedRow = {};
+        validColumns.forEach(col => {
+          cleanedRow[col] = row[col];
+        });
+        return cleanedRow;
+      }).filter(row => {
+        const values = Object.values(row);
+        return values.some(val => 
+          val !== "" && val !== null && val !== undefined
+        );
+      });
+    }
+
+    function findPartyName(row) {
+      const possibleColumns = [
+        "Party Name", "PartyName", "party_name", "Party", "party", "PARTY",
+        "Customer", "customer", "CUSTOMER", "Name", "name", "NAME"
+      ];
+      
+      for (let col of possibleColumns) {
+        const keys = Object.keys(row);
+        const foundKey = keys.find(k => k.trim().toLowerCase() === col.toLowerCase());
+        if (foundKey && row[foundKey]) {
+          const value = row[foundKey].toString().trim();
+          if (value !== "") return value.toUpperCase();
+        }
+      }
+      return null;
+    }
+
+    function parseDate(dateStr) {
+      if (!dateStr) return null;
+      
+      // Handle Excel serial dates
+      if (typeof dateStr === 'number' && dateStr > 1000) {
+        return new Date((dateStr - 25569) * 86400 * 1000);
+      }
+      
+      let date = new Date(dateStr);
+      if (!isNaN(date.getTime())) return date;
+      
+      const parts = dateStr.toString().split(/[-\/]/);
+      if (parts.length === 3) {
+        date = new Date(parts[2], parts[1] - 1, parts[0]);
+        if (!isNaN(date.getTime())) return date;
+      }
+      
+      return null;
+    }
+
+    function formatDate(date) {
+      if (!date || isNaN(date.getTime())) return '';
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      return `${day}/${month}/${year}`;
+    }
+
+    function updatePartyList() {
+      if (allParties.size === 0) return;
+
+      const parties = Array.from(allParties).sort();
+      let html = '';
+      parties.forEach(party => {
+        html += `<button onclick="showLedger('${party.replace(/'/g, "\\'")}')">${party}</button>`;
+      });
+      
+      document.getElementById('partyButtons').innerHTML = html;
+      document.getElementById('partySection').style.display = 'block';
+    }
+
+    function showLedger(partyName) {
+      const bills = billsData.filter(b => b.party === partyName);
+      const payments = cashbookData.filter(p => p.party === partyName);
+      
+      // Create opening balance entry from cashflow if exists
+      const openingBalanceEntry = cashflowData[partyName] ? {
+        party: partyName,
+        date: new Date(0), // Very old date to sort first
+        description: 'Opening Balance (Previous Month Payment)',
+        amount: cashflowData[partyName],
+        type: 'credit'
+      } : null;
+
+      // Combine all transactions
+      const allTransactions = openingBalanceEntry 
+        ? [openingBalanceEntry, ...bills, ...payments]
+        : [...bills, ...payments];
+      
+      allTransactions.sort((a, b) => {
+        if (!a.date) return 1;
+        if (!b.date) return -1;
+        return a.date - b.date;
+      });
+
+      if (allTransactions.length === 0) {
+        document.getElementById('results').innerHTML = '<p>No transactions found for this party.</p>';
+        document.getElementById('printBtn').style.display = 'none';
+        return;
+      }
+
+      let runningBalance = 0;
+      let totalDebit = 0;
+      let totalCredit = 0;
+
+      let tableRows = '';
+      
+      allTransactions.forEach(trans => {
+        const debit = trans.type === 'debit' ? trans.amount : 0;
+        const credit = trans.type === 'credit' ? trans.amount : 0;
+        
+        runningBalance += debit - credit;
+        totalDebit += debit;
+        totalCredit += credit;
+        
+        // Format date, but show special formatting for opening balance
+        const dateDisplay = trans.description === 'Opening Balance (Previous Month Payment)' 
+          ? 'Opening' 
+          : formatDate(trans.date);
+        
+        tableRows += `
+          <tr>
+            <td>${dateDisplay}</td>
+            <td>${trans.description}</td>
+            <td class="debit-col">${debit > 0 ? debit.toFixed(2) : ''}</td>
+            <td class="credit-col">${credit > 0 ? credit.toFixed(2) : ''}</td>
+            <td>${Math.abs(runningBalance).toFixed(2)}</td>
+          </tr>
+        `;
+      });
+
+      const startDate = allTransactions.find(t => t.description !== 'Opening Balance (Previous Month Payment)')?.date || allTransactions[0].date;
+      const endDate = allTransactions[allTransactions.length - 1].date;
+
+      const html = `
+        <div class="ledger-container">
+          <div class="ledger-header">
+            <h2>Ledger</h2>
+            <div class="company-info">
+              <div class="info-row">
+                <span class="info-label">Company Name:</span>
+                <span>Al-Hamd Dyeing</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">To:</span>
+                <span>${partyName}</span>
+              </div>
+            </div>
+          </div>
+          
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Description</th>
+                <th>Debit</th>
+                <th>Credit</th>
+                <th>Closing Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="opening-balance-row">
+                <td colspan="4">Opening Balance</td>
+                <td>0.00</td>
+              </tr>
+              ${tableRows}
+              <tr class="totals">
+                <td colspan="2">Closing Balance</td>
+                <td class="debit-col"></td>
+                <td class="credit-col"></td>
+                <td>${Math.abs(runningBalance).toFixed(2)}</td>
+              </tr>
+              <tr class="totals">
+                <td colspan="2"><strong>Total</strong></td>
+                <td class="debit-col"><strong>${totalDebit.toFixed(2)}</strong></td>
+                <td class="credit-col"><strong>${totalCredit.toFixed(2)}</strong></td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      document.getElementById('results').innerHTML = html;
+      document.getElementById('printBtn').style.display = 'inline-block';
+    }
+  </script>
+</body>
+</html>
