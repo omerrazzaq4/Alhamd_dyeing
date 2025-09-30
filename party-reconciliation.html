@@ -119,13 +119,13 @@
 
   <div class="file-section">
     <h3>Step 1: Load Bills/Ledger File</h3>
-    <p>This file should be automatically loaded: Factory_Khata_September.xlsx</p>
+    <p>This file should be automatically loaded: Factory_Khata_August.xlsx</p>
     <div id="billsStatus" class="file-status"></div>
   </div>
 
   <div class="file-section">
     <h3>Step 2: Load Cashbook File</h3>
-    <p>Select the cashbook sheet from Factory_Khata_September.xlsx</p>
+    <p>Select the cashbook sheet from Factory_Khata_August.xlsx</p>
     <div id="cashbookSheetSelector" style="display: none;">
       <label><strong>Select Cashbook Sheet: </strong></label>
       <select id="cashbookSheet" onchange="loadCashbookSheet()">
@@ -156,7 +156,7 @@
 
     async function autoLoadExcel() {
       try {
-        const response = await fetch("Factory_Khata_September.xlsx");
+        const response = await fetch("Factory_Khata_August.xlsx");
         if (!response.ok) throw new Error("File not found");
         
         const arrayBuffer = await response.arrayBuffer();
@@ -533,4 +533,5 @@
     }
   </script>
 </body>
+
 </html>
