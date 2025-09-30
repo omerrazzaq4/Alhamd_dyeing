@@ -81,6 +81,7 @@
       <option value="dyes">🎨 Dyes Bill Sheet</option>
       <option value="cashbook">💰 Cashbook Analyzer</option>
       <option value="finder">🔍 General Bill Finder</option>
+      <option value="reconciliation">📊 Party Reconciliation</option>
     </select>
   </div>
 
@@ -116,6 +117,14 @@
     <iframe src="bill_finder_2.html"></iframe>
   </div>
 
+  <!-- Tool 5: Party Reconciliation -->
+<div id="reconciliation" class="tool-section">
+  <div class="tool-description">
+    📊 <strong>Party Reconciliation:</strong> View merged ledger with bills and payments for each party
+  </div>
+  <iframe src="party-reconciliation.html"></iframe>
+</div>
+
   <script>
     function switchTool() {
       const selector = document.getElementById("toolSelect").value;
@@ -126,4 +135,5 @@
     }
   </script>
 </body>
+
 </html>
