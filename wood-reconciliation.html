@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Wood Ledger Reconciliation - Al-Hamd Dyeing</title>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: white; }
+    h1 { color: darkblue; }
+    button { margin: 5px; padding: 8px 12px; border-radius: 5px; border: 1px solid #ccc; cursor: pointer; }
+    button:hover { background: #f0f0f0; }
+    button.print-btn { background: #4CAF50; color: white; }
+    button.print-btn:hover { background: #45a049; }
+    
+    .file-section {
+      background: #f9f9f9;
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      border: 1px solid #ddd;
+    }
+    
+    .file-section h3 {
+      margin-top: 0;
+      color: #333;
+    }
+    
+    .file-status {
+      margin-top: 10px;
+      font-weight: bold;
+    }
+    
+    .success { color: green; }
+    .error { color: red; }
+    
+    #partySection {
+      margin: 20px 0;
+    }
+    
+    #partyButtons button {
+      margin: 5px;
+    }
+    
+    .ledger-container {
+      margin-top: 20px;
+    }
+    
+    .ledger-header {
+      text-align: center;
+      border: 2px solid #333;
+      padding: 20px;
+      margin-bottom: 20px;
+      background: #f9e6e6;
+      border-radius: 5px;
+    }
+    
+    .ledger-header h2 {
+      margin: 0 0 15px 0;
+      font-size: 24px;
+      color: #8b4654;
+    }
+    
+    .company-info {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      text-align: left;
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    
+    .info-row {
+      display: flex;
+      gap: 10px;
+    }
+    
+    .info-label {
+      font-weight: bold;
+      color: #8b4654;
+      min-width: 120px;
+    }
+    
+    table { 
+      border-collapse: collapse; 
+      width: 100%; 
+      margin-top: 20px;
+      border: 2px solid #333;
+    }
+    
+    th, td { 
+      border: 1px solid #333; 
+      padding: 8px; 
+      text-align: center; 
+    }
+    
+    th { 
+      background-color: #f9e6e6; 
+      font-weight: bold;
+      color: #8b4654;
+    }
+    
+    .opening-balance-row, .totals { 
+      font-weight: bold; 
+      background: #f9e6e6; 
+    }
+    
+    .debit-col { color: #d32f2f; }
+    .credit-col { color: #388e3c; }
+    
+    @media print {
+      body { margin: 0; }
+      h1, button, .file-section, #partySection { display: none !important; }
+      @page { margin: 0.5in; size: A4; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Wood Ledger Reconciliation</h1>
+
+  <div class="file-section">
+    <h3>Step 1: Load Wood Bills</h3>
+    <p>This file should be automatically loaded: Factory_Khata_September.xlsx</p>
+    <div id="billsStatus" class="file-status"></div>
+  </div>
+
+  <div class="file-section">
+    <h3>Step 2: Load Cashbook File</h3>
+    <p>Select the cashbook sheet from Factory_Khata_September.xlsx</p>
+    <div id="cashbookSheetSelector" style="display: none;">
+      <label><strong>Select Cashbook Sheet: </strong></label>
+      <select id="cashbookSheet" onchange="loadCashbookSheet()">
+        <option value="">-- Choose sheet --</option>
+      </select>
+    </div>
+    <div id="cashbookStatus" class="file-status"></div>
+  </div>
+
+  <div id="partySection" style="display: none;">
+    <h3>Step 3: Select Party to View Ledger</h3>
+    <div id="partyButtons"></div>
+  </div>
+
+  <button id="printBtn" class="print-btn" onclick="window.print()" style="display: none;">Print Ledger</button>
+
+  <div id="results"></div>
+
+  <script>
+    let workbookData = null;
+    let billsData = [];
+    let cashbookData = [];
+    let cashflowData = {};
+    let woodOpeningBalances = {};
+    let allParties = new Set();
+
+    // Auto-load on page load
+    window.addEventListener("DOMContentLoaded", autoLoadExcel);
+
+    async function autoLoadExcel() {
+      try {
+        const response = await fetch("Factory_Khata_September.xlsx");
+        if (!response.ok) throw new Error("File not found");
+        
+        const arrayBuffer = await response.arrayBuffer();
+        workbookData = XLSX.read(arrayBuffer, { type: "array" });
+
+        // Process bills ONLY from Wood sheet
+        const woodSheet = workbookData.SheetNames.find(name => 
+          name.toLowerCase().trim() === 'wood'
+        );
+        
+        if (woodSheet) {
+          processBillSheet(woodSheet);
+        } else {
+          console.log('No Wood sheet found. Available sheets:', workbookData.SheetNames);
+        }
+
+        document.getElementById('billsStatus').innerHTML = `<span class="success">✓ Loaded ${billsData.length} bills from Wood sheet</span>`;
+
+        // Load cashflow data (opening balances)
+        loadCashflowData();
+
+        // Show cashbook sheet selector
+        populateCashbookSelector();
+
+      } catch (err) {
+        document.getElementById('billsStatus').innerHTML = `<span class="error">✗ Error loading file: ${err.message}</span>`;
+      }
+    }
+
+    function loadCashflowData() {
+      try {
+        // Look for Cashflow sheet (case-insensitive)
+        const cashflowSheetName = workbookData.SheetNames.find(name => 
+          name.toLowerCase().trim() === 'cashflow' || 
+          name.toLowerCase().trim() === 'cash flow' ||
+          name.toLowerCase().trim().includes('cashflow')
+        );
+
+        if (!cashflowSheetName) {
+          console.log('No Cashflow sheet found. Available sheets:', workbookData.SheetNames);
+          return;
+        }
+
+        console.log('Found Cashflow sheet:', cashflowSheetName);
+
+        const worksheet = workbookData.Sheets[cashflowSheetName];
+        const rawData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+        
+        console.log('Raw cashflow data:', rawData);
+
+        // Process cashflow data - store opening balance per party
+        rawData.forEach(row => {
+          console.log('Processing row:', row);
+          
+          // Find party name - try "Party Names" first (from your screenshot)
+          const party = (
+            row['Party Names'] || row['Party Name'] || row['PartyName'] || 
+            row['Party'] || row['party'] || row['PARTY'] || 
+            row['Name'] || row['name']
+          );
+
+          if (party && party.toString().trim() !== '') {
+            const partyUpper = party.toString().trim().toUpperCase();
+            
+            // Find credit amount - try exact "Credit" column first
+            const amount = parseFloat(
+              row['Credit'] || row['credit'] || row['CREDIT'] ||
+              row['Amount'] || row['amount'] || row['AMOUNT'] || 0
+            );
+
+            // Only store if amount is valid and not #N/A or similar
+            if (amount > 0 && !isNaN(amount)) {
+              cashflowData[partyUpper] = amount;
+              console.log(`✓ Loaded opening balance for ${partyUpper}: ${amount}`);
+            }
+          }
+        });
+
+        console.log('Final cashflow data loaded:', cashflowData);
+        
+        // Update status message
+        const cashflowCount = Object.keys(cashflowData).length;
+        if (cashflowCount > 0) {
+          document.getElementById('billsStatus').innerHTML += `<br><span class="success">✓ Loaded opening balances for ${cashflowCount} parties from Cashflow sheet</span>`;
+        }
+
+      } catch (err) {
+        console.error('Error loading cashflow data:', err);
+      }
+    }
+
+    function processBillSheet(sheetName) {
+      try {
+        const worksheet = workbookData.Sheets[sheetName];
+        const rawData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+        const cleanedData = cleanTableData(rawData);
+
+        console.log('Processing Wood sheet data:', cleanedData);
+        console.log('Sample row:', cleanedData[0]);
+
+        cleanedData.forEach(row => {
+          const party = findPartyName(row);
+          if (party) {
+            allParties.add(party);
+            
+            // Check if this is a "Closing Balance CF" row
+            const vehicleNumber = row['Vehicle Number'] || row['Vehicle number'] || row['vehicle number'] || 
+                                 row.VehicleNumber || row.vehicleNumber || '';
+            
+            if (vehicleNumber && vehicleNumber.toString().toLowerCase().includes('closing balance')) {
+              // This is an opening balance row - get from "balance" column
+              const balanceKey = Object.keys(row).find(key => key.toLowerCase().trim() === 'balance');
+              const amount = balanceKey ? parseFloat(row[balanceKey]) : 0;
+              
+              if (amount > 0) {
+                woodOpeningBalances[party] = amount;
+                console.log(`Found opening balance for ${party}: ${amount} from balance column`);
+              }
+              return; // Don't process this as a regular bill
+            }
+            
+            // Try multiple variations of Bill Number column
+            const billNo = row['Bill Number'] || row['Bill No'] || row['Bill no'] || 
+                          row.BillNo || row.billNo || row['bill number'] || '';
+            
+            // Get weight and rate for description
+            const weight = row['Weight'] || row['weight'] || row.WEIGHT || '';
+            const rate = row['Rate'] || row['rate'] || row.RATE || '';
+            
+            // Use Total column for Wood sheet - try multiple variations
+            const totalKey = Object.keys(row).find(key => key.toLowerCase().trim() === 'total');
+            const amount = totalKey ? parseFloat(row[totalKey]) : 0;
+            
+            console.log(`Party: ${party}, Bill: ${billNo}, Vehicle: ${vehicleNumber}, Weight: ${weight}, Rate: ${rate}, Amount: ${amount}`);
+            
+            if (amount > 0) {
+              // Build description with vehicle number, weight, and rate
+              let description = '';
+              if (vehicleNumber) description = vehicleNumber;
+              if (weight) description += (description ? ', ' : '') + `${weight} kg`;
+              if (rate) description += (description ? ' @ ' : '') + rate;
+              
+              // If no vehicle/weight/rate info, use bill number
+              if (!description && billNo) {
+                description = `Bill ${billNo}`;
+              } else if (!description) {
+                description = 'Wood Bill';
+              }
+              
+              billsData.push({
+                party: party,
+                date: parseDate(row.Date || row.date || row.DATE),
+                description: description,
+                amount: amount,
+                type: 'debit'
+              });
+            }
+          }
+        });
+
+        console.log('Total bills loaded:', billsData.length);
+        console.log('Opening balances found:', woodOpeningBalances);
+        console.log('Bills data:', billsData);
+
+      } catch (err) {
+        console.error(`Error processing sheet ${sheetName}:`, err);
+      }
+    }
+
+    function populateCashbookSelector() {
+      const selector = document.getElementById('cashbookSheet');
+      const selectorDiv = document.getElementById('cashbookSheetSelector');
+      
+      selector.innerHTML = '<option value="">-- Choose sheet --</option>';
+      workbookData.SheetNames.forEach(name => {
+        selector.innerHTML += `<option value="${name}">${name}</option>`;
+      });
+      
+      selectorDiv.style.display = 'block';
+      
+      // Auto-select if there's a sheet named "Cashbook" or similar
+      const cashbookSheet = workbookData.SheetNames.find(name => 
+        name.toLowerCase().includes('cash') || name.toLowerCase().includes('payment')
+      );
+      if (cashbookSheet) {
+        selector.value = cashbookSheet;
+        loadCashbookSheet();
+      }
+    }
+
+    function loadCashbookSheet() {
+      const sheetName = document.getElementById('cashbookSheet').value;
+      if (!sheetName) return;
+
+      try {
+        const worksheet = workbookData.Sheets[sheetName];
+        const rawData = XLSX.utils.sheet_to_json(worksheet, { defval: "" });
+        const cleanedData = cleanTableData(rawData);
+
+        cashbookData = [];
+        cleanedData.forEach(row => {
+          const party = findPartyName(row);
+          if (party) {
+            allParties.add(party);
+            
+            // Use Debit column from cashbook as credit (payments)
+            const debit = parseFloat(row.Debit || row.debit || row.DEBIT || 0);
+            if (debit > 0) {
+              cashbookData.push({
+                party: party,
+                date: parseDate(row.Date || row.date || row.DATE),
+                description: row.Description || row.description || row.DESCRIPTION || row.Particulars || row.particulars || 'Payment',
+                amount: debit,
+                type: 'credit'
+              });
+            }
+          }
+        });
+
+        document.getElementById('cashbookStatus').innerHTML = `<span class="success">✓ Loaded ${cashbookData.length} payments from ${sheetName}</span>`;
+        updatePartyList();
+
+      } catch (err) {
+        document.getElementById('cashbookStatus').innerHTML = `<span class="error">✗ Error loading cashbook: ${err.message}</span>`;
+      }
+    }
+
+    function cleanTableData(rawData) {
+      if (rawData.length === 0) return rawData;
+
+      const allColumns = Object.keys(rawData[0]);
+      const validColumns = allColumns.filter(col => {
+        const colName = col.toString().toLowerCase();
+        
+        // Keep empty columns check
+        if (colName.includes('__empty') || colName.includes('empty')) {
+          return false;
+        }
+        
+        // Keep columns that are whitespace or just numbers - but NOT if it says "Total"
+        if (colName.trim() === '' || /^\d+$/.test(colName)) {
+          return false;
+        }
+        
+        // KEEP standalone "Total" column - don't filter it out
+        if (colName.trim() === 'total') {
+          return true;
+        }
+        
+        // Remove columns that appear to be pivot table artifacts
+        if (colName.includes('sum of') || colName.includes('count of') || 
+            colName.includes('average of') || colName.includes('grand total') ||
+            colName.includes('total of') || colName.includes('subtotal')) {
+          return false;
+        }
+        
+        return true;
+      });
+
+      console.log("Original columns:", allColumns);
+      console.log("Filtered columns:", validColumns);
+
+      return rawData.map(row => {
+        const cleanedRow = {};
+        validColumns.forEach(col => {
+          cleanedRow[col] = row[col];
+        });
+        return cleanedRow;
+      }).filter(row => {
+        const values = Object.values(row);
+        return values.some(val => 
+          val !== "" && val !== null && val !== undefined
+        );
+      });
+    }
+
+    function findPartyName(row) {
+      const possibleColumns = [
+        "Party Name", "PartyName", "party_name", "Party", "party", "PARTY",
+        "Customer", "customer", "CUSTOMER", "Name", "name", "NAME"
+      ];
+      
+      for (let col of possibleColumns) {
+        const keys = Object.keys(row);
+        const foundKey = keys.find(k => k.trim().toLowerCase() === col.toLowerCase());
+        if (foundKey && row[foundKey]) {
+          const value = row[foundKey].toString().trim();
+          if (value !== "") return value.toUpperCase();
+        }
+      }
+      return null;
+    }
+
+    function parseDate(dateStr) {
+      if (!dateStr) return null;
+      
+      // Handle Excel serial dates
+      if (typeof dateStr === 'number' && dateStr > 1000) {
+        return new Date((dateStr - 25569) * 86400 * 1000);
+      }
+      
+      let date = new Date(dateStr);
+      if (!isNaN(date.getTime())) return date;
+      
+      const parts = dateStr.toString().split(/[-\/]/);
+      if (parts.length === 3) {
+        date = new Date(parts[2], parts[1] - 1, parts[0]);
+        if (!isNaN(date.getTime())) return date;
+      }
+      
+      return null;
+    }
+
+    function formatDate(date) {
+      if (!date || isNaN(date.getTime())) return '';
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+      return `${day}/${month}/${year}`;
+    }
+
+    function updatePartyList() {
+      if (allParties.size === 0) return;
+
+      const parties = Array.from(allParties).sort();
+      let html = '';
+      parties.forEach(party => {
+        html += `<button onclick="showLedger('${party.replace(/'/g, "\\'")}')">${party}</button>`;
+      });
+      
+      document.getElementById('partyButtons').innerHTML = html;
+      document.getElementById('partySection').style.display = 'block';
+    }
+
+    function showLedger(partyName) {
+      const bills = billsData.filter(b => b.party === partyName);
+      const payments = cashbookData.filter(p => p.party === partyName);
+      
+      // Get opening balance - prioritize Wood sheet opening balance
+      let openingBalance = 0;
+      
+      if (woodOpeningBalances[partyName]) {
+        // Use Wood sheet opening balance (Closing Balance CF) as debit
+        openingBalance = woodOpeningBalances[partyName];
+      } else if (cashflowData[partyName]) {
+        // Fallback to Cashflow sheet as credit (negative balance)
+        openingBalance = -cashflowData[partyName];
+      }
+
+      // Combine bills and payments (no opening balance entry in transactions)
+      const allTransactions = [...bills, ...payments];
+      
+      allTransactions.sort((a, b) => {
+        if (!a.date) return 1;
+        if (!b.date) return -1;
+        return a.date - b.date;
+      });
+
+      if (allTransactions.length === 0) {
+        document.getElementById('results').innerHTML = '<p>No transactions found for this party.</p>';
+        document.getElementById('printBtn').style.display = 'none';
+        return;
+      }
+
+      let runningBalance = openingBalance; // Start with opening balance
+      let totalDebit = 0;
+      let totalCredit = 0;
+
+      let tableRows = '';
+      
+      allTransactions.forEach(trans => {
+        const debit = trans.type === 'debit' ? trans.amount : 0;
+        const credit = trans.type === 'credit' ? trans.amount : 0;
+        
+        runningBalance += debit - credit;
+        totalDebit += debit;
+        totalCredit += credit;
+        
+        // Determine color based on balance (red if they owe, green if overpaid)
+        const balanceColor = runningBalance > 0 ? 'debit-col' : runningBalance < 0 ? 'credit-col' : '';
+        
+        tableRows += `
+          <tr>
+            <td>${formatDate(trans.date)}</td>
+            <td>${trans.description}</td>
+            <td class="debit-col">${debit > 0 ? debit.toFixed(2) : ''}</td>
+            <td class="credit-col">${credit > 0 ? credit.toFixed(2) : ''}</td>
+            <td class="${balanceColor}">${Math.abs(runningBalance).toFixed(2)}</td>
+          </tr>
+        `;
+      });
+
+      const startDate = allTransactions[0]?.date;
+      const endDate = allTransactions[allTransactions.length - 1]?.date;
+
+      const html = `
+        <div class="ledger-container">
+          <div class="ledger-header">
+            <h2>Ledger</h2>
+            <div class="company-info">
+              <div class="info-row">
+                <span class="info-label">Company Name:</span>
+                <span>Al-Hamd Dyeing</span>
+              </div>
+              <div class="info-row">
+                <span class="info-label">To:</span>
+                <span>${partyName}</span>
+              </div>
+            </div>
+          </div>
+          
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Description</th>
+                <th>Debit</th>
+                <th>Credit</th>
+                <th>Closing Balance</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="opening-balance-row">
+                <td colspan="4">Opening Balance</td>
+                <td>${Math.abs(openingBalance).toFixed(2)}</td>
+              </tr>
+              ${tableRows}
+              <tr class="totals">
+                <td colspan="2">Closing Balance</td>
+                <td class="debit-col"></td>
+                <td class="credit-col"></td>
+                <td class="${runningBalance > 0 ? 'debit-col' : runningBalance < 0 ? 'credit-col' : ''}">${Math.abs(runningBalance).toFixed(2)}</td>
+              </tr>
+              <tr class="totals">
+                <td colspan="2"><strong>Total</strong></td>
+                <td class="debit-col"><strong>${totalDebit.toFixed(2)}</strong></td>
+                <td class="credit-col"><strong>${totalCredit.toFixed(2)}</strong></td>
+                <td></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      document.getElementById('results').innerHTML = html;
+      document.getElementById('printBtn').style.display = 'inline-block';
+    }
+  </script>
+</body>
+</html>
