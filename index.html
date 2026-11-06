@@ -65,6 +65,21 @@
       font-style: italic;
       color: #666;
     }
+    .timestamp {
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      background: rgba(42, 82, 152, 0.9);
+      color: white;
+      padding: 8px 15px;
+      border-radius: 20px;
+      font-size: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      z-index: 1000;
+    }
+    .timestamp strong {
+      font-weight: 600;
+    }
   </style>
 </head>
 <body>
@@ -80,8 +95,10 @@
       <option value="wood">🪵 Wood Bill Sheet</option>
       <option value="dyes">🎨 Dyes Bill Sheet</option>
       <option value="cashbook">💰 Cashbook Analyzer</option>
+      <option value="cashbook-date">📅 Cashbook by Date</option>
       <option value="finder">🔍 General Bill Finder</option>
       <option value="reconciliation">📊 Party Reconciliation</option>
+      <option value="reconciliation-detailed">📋 Party Reconciliation (Detailed)</option>
       <option value="wood-reconciliation">🪵 Wood Reconciliation</option>
     </select>
   </div>
@@ -110,6 +127,14 @@
     <iframe src="cashbook.html"></iframe>
   </div>
 
+  <!-- Tool 3b: Cashbook by Date -->
+  <div id="cashbook-date" class="tool-section">
+    <div class="tool-description">
+      📅 <strong>Cashbook by Date:</strong> View all transactions for a specific day, with debit/credit totals and running balance
+    </div>
+    <iframe src="cashbook_by_date.html"></iframe>
+  </div>
+
   <!-- Tool 4: General Bill Finder -->
   <div id="finder" class="tool-section">
     <div class="tool-description">
@@ -119,22 +144,66 @@
   </div>
 
   <div id="reconciliation" class="tool-section">
-  <div class="tool-description">
-    📊 <strong>Party Reconciliation:</strong> View merged ledger with bills and payments for each party
+    <div class="tool-description">
+      📊 <strong>Party Reconciliation:</strong> View merged ledger with bills and payments for each party
+    </div>
+    <iframe src="party-reconciliation.html"></iframe>
   </div>
-  <iframe src="party-reconciliation.html"></iframe>
-</div>
 
-  <!-- Add this section after your other tool sections -->
-<div id="wood-reconciliation" class="tool-section">
-  <div class="tool-description">
-    🪵 <strong>Wood Reconciliation:</strong> View merged ledger with wood bills and payments for each party
+  <!-- Tool 5b: Party Reconciliation (Detailed) -->
+  <div id="reconciliation-detailed" class="tool-section">
+    <div class="tool-description">
+      📋 <strong>Party Reconciliation (Detailed):</strong> Merged ledger with full bill details (bill no, quality, shipment, kora, tiyaar, rate) and payments for each party
+    </div>
+    <iframe src="party-reconciliation-detailed.html"></iframe>
   </div>
-  <iframe src="wood-reconciliation.html"></iframe>
-</div>
 
+  <!-- Tool 6: Wood Reconciliation -->
+  <div id="wood-reconciliation" class="tool-section">
+    <div class="tool-description">
+      🪵 <strong>Wood Reconciliation:</strong> View merged ledger with wood bills and payments for each party
+    </div>
+    <iframe src="wood-reconciliation.html"></iframe>
+  </div>
+
+  <!-- Timestamp Display -->
+  <div class="timestamp">
+    <strong>Last Updated:</strong> <span id="lastUpdated"></span>
+  </div>
 
   <script>
+    // Display last updated timestamp from file modification date
+    async function displayTimestamp() {
+      const lastUpdated = document.getElementById('lastUpdated');
+      try {
+        // Fetch the current file to get its Last-Modified header
+        const response = await fetch(window.location.href, { method: 'HEAD' });
+        const lastModified = response.headers.get('Last-Modified');
+        
+        if (lastModified) {
+          const date = new Date(lastModified);
+          const options = { 
+            year: 'numeric', 
+            month: 'short', 
+            day: 'numeric', 
+            hour: '2-digit', 
+            minute: '2-digit',
+            hour12: true 
+          };
+          lastUpdated.textContent = date.toLocaleString('en-US', options);
+        } else {
+          // Fallback if Last-Modified header not available
+          lastUpdated.textContent = 'Unable to determine';
+        }
+      } catch (error) {
+        console.error('Error fetching timestamp:', error);
+        lastUpdated.textContent = 'Unable to determine';
+      }
+    }
+    
+    // Call on page load
+    displayTimestamp();
+
     function switchTool() {
       const selector = document.getElementById("toolSelect").value;
       document.querySelectorAll(".tool-section").forEach(div => div.style.display = "none");
@@ -144,6 +213,219 @@
     }
   </script>
 </body>
+</html><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Al-Hamd Dyeing - Combined Bill Tools</title>
+  <style>
+    body { 
+      font-family: Arial, sans-serif; 
+      margin: 20px; 
+      background: #f5f5f5;
+    }
+    .header {
+      text-align: center;
+      background: linear-gradient(135deg, #1e3c72, #2a5298);
+      color: white;
+      padding: 20px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+    }
+    .header h1 {
+      margin: 0;
+      font-size: 28px;
+    }
+    .header p {
+      margin: 5px 0 0 0;
+      opacity: 0.9;
+    }
+    #toolSelector { 
+      margin-bottom: 20px; 
+      padding: 10px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      text-align: center;
+    }
+    #toolSelector select {
+      padding: 10px 15px;
+      font-size: 16px;
+      border: 2px solid #ddd;
+      border-radius: 5px;
+      background: white;
+      min-width: 250px;
+    }
+    #toolSelector select:focus {
+      border-color: #2a5298;
+      outline: none;
+    }
+    .tool-section { 
+      display: none; 
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    .tool-section iframe {
+      width: 100%; 
+      height: 90vh; 
+      border: none;
+    }
+    .tool-description {
+      padding: 15px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #dee2e6;
+      font-style: italic;
+      color: #666;
+    }
+    .timestamp {
+      position: fixed;
+      bottom: 10px;
+      right: 10px;
+      background: rgba(42, 82, 152, 0.9);
+      color: white;
+      padding: 8px 15px;
+      border-radius: 20px;
+      font-size: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      z-index: 1000;
+    }
+    .timestamp strong {
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🏭 Al-Hamd Dyeing - Combined Bill Tools</h1>
+    <p>Select a tool below to manage your business operations</p>
+  </div>
 
+  <div id="toolSelector">
+    <label for="toolSelect"><strong>Select Tool: </strong></label>
+    <select id="toolSelect" onchange="switchTool()">
+      <option value="">-- Choose a tool --</option>
+      <option value="wood">🪵 Wood Bill Sheet</option>
+      <option value="dyes">🎨 Dyes Bill Sheet</option>
+      <option value="cashbook">💰 Cashbook Analyzer</option>
+      <option value="cashbook-date">📅 Cashbook by Date</option>
+      <option value="finder">🔍 General Bill Finder</option>
+      <option value="reconciliation">📊 Party Reconciliation</option>
+      <option value="reconciliation-detailed">📋 Party Reconciliation (Detailed)</option>
+      <option value="wood-reconciliation">🪵 Wood Reconciliation</option>
+    </select>
+  </div>
+
+  <!-- Tool 1: Wood -->
+  <div id="wood" class="tool-section">
+    <div class="tool-description">
+      📋 <strong>Wood Bill Sheet:</strong> Manage and track wood-related orders and bills
+    </div>
+    <iframe src="Bill-sheet-wood.html"></iframe>
+  </div>
+
+  <!-- Tool 2: Dyes -->
+  <div id="dyes" class="tool-section">
+    <div class="tool-description">
+      🎨 <strong>Dyes Bill Sheet:</strong> Track dye orders with price, paid amounts, and outstanding balances
+    </div>
+    <iframe src="Dyes-billsheet.html"></iframe>
+  </div>
+
+  <!-- Tool 3: Cashbook Analyzer -->
+  <div id="cashbook" class="tool-section">
+    <div class="tool-description">
+      💰 <strong>Cashbook Analyzer:</strong> Analyze party-wise cashbook entries with debit/credit summaries
+    </div>
+    <iframe src="cashbook.html"></iframe>
+  </div>
+
+  <!-- Tool 3b: Cashbook by Date -->
+  <div id="cashbook-date" class="tool-section">
+    <div class="tool-description">
+      📅 <strong>Cashbook by Date:</strong> View all transactions for a specific day, with debit/credit totals and running balance
+    </div>
+    <iframe src="cashbook_by_date.html"></iframe>
+  </div>
+
+  <!-- Tool 4: General Bill Finder -->
+  <div id="finder" class="tool-section">
+    <div class="tool-description">
+      🔍 <strong>General Bill Finder:</strong> Search and filter bills across different categories
+    </div>
+    <iframe src="bill_finder_2.html"></iframe>
+  </div>
+
+  <div id="reconciliation" class="tool-section">
+    <div class="tool-description">
+      📊 <strong>Party Reconciliation:</strong> View merged ledger with bills and payments for each party
+    </div>
+    <iframe src="party-reconciliation.html"></iframe>
+  </div>
+
+  <!-- Tool 5b: Party Reconciliation (Detailed) -->
+  <div id="reconciliation-detailed" class="tool-section">
+    <div class="tool-description">
+      📋 <strong>Party Reconciliation (Detailed):</strong> Merged ledger with full bill details (bill no, quality, shipment, kora, tiyaar, rate) and payments for each party
+    </div>
+    <iframe src="party-reconciliation-detailed.html"></iframe>
+  </div>
+
+  <!-- Tool 6: Wood Reconciliation -->
+  <div id="wood-reconciliation" class="tool-section">
+    <div class="tool-description">
+      🪵 <strong>Wood Reconciliation:</strong> View merged ledger with wood bills and payments for each party
+    </div>
+    <iframe src="wood-reconciliation.html"></iframe>
+  </div>
+
+  <!-- Timestamp Display -->
+  <div class="timestamp">
+    <strong>Last Updated:</strong> <span id="lastUpdated"></span>
+  </div>
+
+  <script>
+    // Display last updated timestamp from file modification date
+    async function displayTimestamp() {
+      const lastUpdated = document.getElementById('lastUpdated');
+      try {
+        // Fetch the current file to get its Last-Modified header
+        const response = await fetch(window.location.href, { method: 'HEAD' });
+        const lastModified = response.headers.get('Last-Modified');
+        
+        if (lastModified) {
+          const date = new Date(lastModified);
+          const options = { 
+            year: 'numeric', 
+            month: 'short', 
+            day: 'numeric', 
+            hour: '2-digit', 
+            minute: '2-digit',
+            hour12: true 
+          };
+          lastUpdated.textContent = date.toLocaleString('en-US', options);
+        } else {
+          // Fallback if Last-Modified header not available
+          lastUpdated.textContent = 'Unable to determine';
+        }
+      } catch (error) {
+        console.error('Error fetching timestamp:', error);
+        lastUpdated.textContent = 'Unable to determine';
+      }
+    }
+    
+    // Call on page load
+    displayTimestamp();
+
+    function switchTool() {
+      const selector = document.getElementById("toolSelect").value;
+      document.querySelectorAll(".tool-section").forEach(div => div.style.display = "none");
+      if (selector) {
+        document.getElementById(selector).style.display = "block";
+      }
+    }
+  </script>
+</body>
 </html>
-
