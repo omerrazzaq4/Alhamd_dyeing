@@ -11,82 +11,54 @@
     button:hover { background: #f0f0f0; }
     button.print-btn { background: #4CAF50; color: white; }
     button.print-btn:hover { background: #45a049; }
+    button.party-active { background: #1565c0; color: white; border-color: #1565c0; }
     table { border-collapse: collapse; width: 100%; margin-top: 20px; }
     th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
     th { background-color: #f2f2f2; }
     .totals { font-weight: bold; background: #e0f7fa; }
-    .selection-area { 
-      margin: 15px 0; 
-      padding: 15px; 
-      border: 1px solid #ddd; 
-      border-radius: 5px; 
-      background: #f9f9f9;
-    }
+    .selection-area { margin: 15px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; background: #f9f9f9; }
     .entry-selection { margin-top: 10px; }
     .entry-checkbox { margin: 5px 10px 5px 0; }
-    input[type="text"] { 
-      padding: 5px; 
-      margin: 5px; 
-      border: 1px solid #ccc; 
-      border-radius: 3px; 
-      width: 300px;
-    }
-    .sheet-selector {
-      margin: 10px 0;
-      padding: 10px;
-      border: 1px solid #ccc;
-      border-radius: 5px;
-      background: #f5f5f5;
-    }
-    .error-message {
-      color: red;
-      font-weight: bold;
-      margin: 10px 0;
-    }
-    .success-message {
-      color: green;
-      font-weight: bold;
-      margin: 10px 0;
-    }
+    input[type="text"] { padding: 6px; margin: 5px; border: 1px solid #ccc; border-radius: 3px; width: 300px; }
+    select { padding: 6px; margin: 5px; border: 1px solid #ccc; border-radius: 3px; }
+    .sheet-selector { margin: 10px 0; padding: 10px; border: 1px solid #ccc; border-radius: 5px; background: #f5f5f5; }
+    .error-message { color: red; font-weight: bold; margin: 10px 0; }
+    .success-message { color: green; font-weight: bold; margin: 10px 0; }
     .debit { color: #d32f2f; font-weight: bold; }
     .credit { color: #388e3c; font-weight: bold; }
+    mark { background: #fff176; padding: 0 1px; }
+
+    /* Tabs */
+    .tabs { display: flex; border-bottom: 2px solid #ccc; margin: 15px 0; }
+    .tab-btn { margin: 0 4px -2px 0; border: 1px solid #ccc; border-bottom: none; border-radius: 6px 6px 0 0; background: #eee; padding: 10px 18px; font-size: 15px; }
+    .tab-btn.active { background: white; font-weight: bold; border-bottom: 2px solid white; color: darkblue; }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
+    .search-controls { padding: 15px; border: 1px solid #ddd; border-radius: 5px; background: #f9f9f9; }
+    .search-info { margin: 10px 0; color: #555; font-style: italic; }
+    .print-party-name, .print-company-header { display: none; }
+
     @media print {
-      h1, h2, h3, button, .selection-area, #selectionArea, #printBtn, .sheet-selector, #messages { display: none !important; }
+      h1, h2, h3, button, .selection-area, #selectionArea, #printBtn, .sheet-selector, #messages,
+      .tabs, .search-controls, .no-print, .search-info { display: none !important; }
       body { margin: 0; font-size: 12px; }
-      
-      @page {
-        margin: 0.5in;
-        size: A4;
-      }
-      
-      .print-party-name { 
-        font-size: 24px; 
-        font-weight: bold; 
-        text-align: center; 
-        margin: 20px 0; 
-        color: #333;
-        border-bottom: 2px solid #333;
-        padding-bottom: 10px;
-        display: block !important;
+      @page { margin: 0.5in; size: A4; }
+      .print-party-name {
+        font-size: 24px; font-weight: bold; text-align: center; margin: 20px 0; color: #333;
+        border-bottom: 2px solid #333; padding-bottom: 10px; display: block !important;
       }
       .print-company-header {
-        font-size: 28px;
-        font-weight: bold;
-        text-align: center;
-        margin: 10px 0 20px 0;
-        color: #000;
-        display: block !important;
+        font-size: 28px; font-weight: bold; text-align: center; margin: 10px 0 20px 0; color: #000; display: block !important;
       }
       table { font-size: 11px; }
       th, td { padding: 6px; }
+      mark { background: none; }
       * { -webkit-print-color-adjust: exact !important; color-adjust: exact !important; }
     }
   </style>
 </head>
 <body>
-  <h1>Find Cashbook Entries by Party</h1>
-
-  <!-- Auto-loading Excel from directory -->
+  <h1>Al-Hamd Dyeing - Cashbook</h1>
 
   <!-- Sheet Selector (hidden initially) -->
   <div id="sheetSelector" class="sheet-selector" style="display: none;">
@@ -99,58 +71,144 @@
   <!-- Messages -->
   <div id="messages"></div>
 
-  <!-- Party Buttons -->
-  <div id="partySection" style="display: none;">
-    <h3>Parties:</h3>
-    <div id="partyButtons"></div>
+  <!-- Tabs -->
+  <div class="tabs" id="tabBar">
+    <button class="tab-btn active" id="tabBtn-parties" onclick="showTab('parties')">Parties</button>
+    <button class="tab-btn" id="tabBtn-search" onclick="showTab('search')">Search Entries</button>
   </div>
 
-  <!-- Entry Selection Area -->
-  <div id="selectionArea" class="selection-area" style="display: none;">
-    <h3>Select Entries to Include:</h3>
-    <label>
-      <input type="radio" name="entrySelection" value="all" checked onchange="toggleEntrySelection()"> 
-      Include All Entries
-    </label><br>
-    <label>
-      <input type="radio" name="entrySelection" value="specific" onchange="toggleEntrySelection()"> 
-      Select Specific Entries
-    </label>
-    
-    <div id="specificEntriesArea" style="display: none; margin-top: 10px;">
-      <p><em>Select from available entries:</em></p>
-      <div id="entryCheckboxes" class="entry-selection"></div>
+  <!-- ================= TAB 1: PARTIES ================= -->
+  <div id="tab-parties" class="tab-pane active">
+    <div id="partySection" style="display: none;">
+      <h3>Parties:</h3>
+      <input type="text" id="partySearch" placeholder="Search parties..." oninput="renderPartyButtons()">
+      <span id="partyCount" class="search-info"></span>
+      <div id="partyButtons"></div>
     </div>
-    
-    <button onclick="applySelection()" style="margin-top: 10px;">Apply Selection</button>
+
+    <!-- Entry Selection Area -->
+    <div id="selectionArea" class="selection-area" style="display: none;">
+      <h3>Search / Select Entries:</h3>
+      <div>
+        <input type="text" id="entrySearch" placeholder="Search in this party's entries (any column)..." oninput="applySelection()">
+        <button onclick="clearEntrySearch()">Clear</button>
+      </div>
+
+      <label>
+        <input type="radio" name="entrySelection" value="all" checked onchange="toggleEntrySelection()">
+        Include All Entries
+      </label><br>
+      <label>
+        <input type="radio" name="entrySelection" value="specific" onchange="toggleEntrySelection()">
+        Select Specific Entries
+      </label>
+
+      <div id="specificEntriesArea" style="display: none; margin-top: 10px;">
+        <p><em>Select from available entries:</em></p>
+        <div id="entryCheckboxes" class="entry-selection"></div>
+      </div>
+
+      <button onclick="applySelection()" style="margin-top: 10px;">Apply Selection</button>
+    </div>
+
+    <button id="printBtn" class="print-btn" onclick="printResults()" style="display: none;">Print Results</button>
+
+    <h2>Results:</h2>
+    <div id="results"></div>
   </div>
 
-  <!-- Print Button -->
-  <button id="printBtn" class="print-btn" onclick="printResults()" style="display: none;">Print Results</button>
-
-  <!-- Results -->
-  <h2>Results:</h2>
-  <div id="results"></div>
+  <!-- ================= TAB 2: SEARCH ================= -->
+  <div id="tab-search" class="tab-pane">
+    <div class="search-controls">
+      <h3 style="margin-top:0;">Search all cashbook entries</h3>
+      <input type="text" id="globalSearch" placeholder="Type to search (e.g. cheque no, amount, description)..." oninput="runGlobalSearch()">
+      <select id="globalPartyFilter" onchange="runGlobalSearch()">
+        <option value="">All parties</option>
+      </select>
+      <button onclick="clearGlobalSearch()">Clear</button>
+      <button class="print-btn" onclick="printResults()">Print Results</button>
+      <div class="search-info">Tip: use several words to narrow down - every word must appear somewhere in the entry.</div>
+    </div>
+    <div id="searchSummary" class="search-info"></div>
+    <div id="searchResults"></div>
+  </div>
 
   <script>
+    const EXCEL_FILE = "Factory_Khata_August.xlsx";
+
     let workbookData = null;
     let cashbookData = [];
     let currentPartyResults = [];
     let currentParty = "";
+    let partyColumn = null;
+    let allParties = [];
 
-    // Show messages
-    function showMessage(text, type = 'info') {
-      const messagesDiv = document.getElementById('messages');
-      const className = type === 'error' ? 'error-message' : 'success-message';
-      messagesDiv.innerHTML = `<div class="${className}">${text}</div>`;
+    // ---------- Helpers ----------
+    function esc(s) {
+      return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
     }
 
-    // Auto-load Excel file from directory
+    function tokens(query) {
+      return query.toLowerCase().split(/\s+/).filter(Boolean);
+    }
+
+    function highlight(text, query) {
+      const toks = tokens(query);
+      if (toks.length === 0) return esc(text);
+      const pattern = toks.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+      const parts = String(text).split(new RegExp("(" + pattern + ")", "gi"));
+      return parts.map((p, i) => (i % 2 === 1 ? "<mark>" + esc(p) + "</mark>" : esc(p))).join("");
+    }
+
+    // Format a cell exactly as it is displayed in the table
+    function formatCell(key, value) {
+      if (value === null || value === undefined) return "";
+      const isDateCol = key.toLowerCase().includes("date");
+      if (typeof value === "number") {
+        if (isDateCol && value > 1000) {
+          return new Date((value - 25569) * 86400 * 1000).toLocaleDateString("en-GB");
+        }
+        return isDateCol ? String(value) : value.toFixed(2);
+      }
+      return String(value);
+    }
+
+    // Does the row match all words in the query (searching displayed text)?
+    function rowMatches(row, query) {
+      const toks = tokens(query);
+      if (toks.length === 0) return true;
+      const text = Object.keys(row).map(k => formatCell(k, row[k])).join(" | ").toLowerCase();
+      return toks.every(t => text.includes(t));
+    }
+
+    function findColumnKey(row, targetColumnName) {
+      const keys = Object.keys(row);
+      return keys.find(key => key.toLowerCase().trim() === targetColumnName.toLowerCase()) || null;
+    }
+
+    function showMessage(text, type = 'info') {
+      const className = type === 'error' ? 'error-message' : 'success-message';
+      document.getElementById('messages').innerHTML = `<div class="${className}">${esc(text)}</div>`;
+    }
+
+    // ---------- Tabs ----------
+    function showTab(name) {
+      ["parties", "search"].forEach(t => {
+        document.getElementById("tab-" + t).classList.toggle("active", t === name);
+        document.getElementById("tabBtn-" + t).classList.toggle("active", t === name);
+      });
+      if (name === "search") {
+        runGlobalSearch();
+        document.getElementById("globalSearch").focus();
+      }
+    }
+
+    // ---------- Load Excel ----------
     async function autoLoadExcel() {
       try {
-        const response = await fetch("Factory_Khata_August.xlsx");
-        if (!response.ok) throw new Error("File not found - make sure Factory_Khata_August.xlsx is in the same directory");
-        
+        const response = await fetch(EXCEL_FILE);
+        if (!response.ok) throw new Error("File not found - make sure " + EXCEL_FILE + " is in the same directory");
+
         const arrayBuffer = await response.arrayBuffer();
         workbookData = XLSX.read(arrayBuffer, { type: "array" });
 
@@ -160,41 +218,55 @@
           return;
         }
 
-        if (sheetNames.length === 1) {
+        // Prefer the "cashbook" sheet (case-insensitive, ignores extra spaces)
+        const cashbookSheet = sheetNames.find(n => n.trim().toLowerCase() === "cashbook");
+
+        if (cashbookSheet) {
+          processSheet(cashbookSheet);
+        } else if (sheetNames.length === 1) {
           processSheet(sheetNames[0]);
         } else {
           populateSheetSelector(sheetNames);
         }
-
       } catch (err) {
-        showMessage("Could not load Factory_Khata_August.xlsx from directory: " + err.message, "error");
+        showMessage("Could not load " + EXCEL_FILE + " from directory: " + err.message, "error");
       }
     }
 
     window.addEventListener("DOMContentLoaded", autoLoadExcel);
 
-    // Populate sheet selector dropdown
     function populateSheetSelector(sheetNames) {
       const dropdown = document.getElementById('sheetDropdown');
       dropdown.innerHTML = '<option value="">-- Choose a sheet --</option>';
-      
       sheetNames.forEach(name => {
-        dropdown.innerHTML += `<option value="${name}">${name}</option>`;
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        dropdown.appendChild(opt);
       });
-
       document.getElementById('sheetSelector').style.display = 'block';
       showMessage("Multiple sheets found. Please select a sheet to continue.");
     }
 
-    // Select and process a sheet
     function selectSheet() {
       const selectedSheet = document.getElementById('sheetDropdown').value;
-      if (selectedSheet) {
-        processSheet(selectedSheet);
-      }
+      if (selectedSheet) processSheet(selectedSheet);
     }
 
-    // Process the selected sheet
+    function detectPartyColumn(columns) {
+      const possible = [
+        "Party", "Party Name", "PartyName", "party_name",
+        "Customer", "Customer Name", "CustomerName", "customer_name",
+        "Client", "Client Name", "ClientName", "client_name",
+        "Name", "Account"
+      ];
+      for (let col of possible) {
+        const found = columns.find(c => c.trim().toLowerCase() === col.toLowerCase());
+        if (found) return found;
+      }
+      return null;
+    }
+
     function processSheet(sheetName) {
       try {
         const sheet = workbookData.Sheets[sheetName];
@@ -203,181 +275,106 @@
           return;
         }
 
-        // Convert sheet to JSON
         const rawData = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-
         if (rawData.length === 0) {
           showMessage("The selected sheet appears to be empty.", 'error');
           return;
         }
 
-        // Clean the data - remove pivot table and empty columns
         cashbookData = cleanTableData(rawData);
-
         if (cashbookData.length === 0) {
           showMessage("No valid table data found after cleaning.", 'error');
           return;
         }
 
-        // Find the Party Name column (try different variations)
-        const possiblePartyColumns = [
-          "Party", "party", "PARTY", "Party Name", "PartyName", "party_name",
-          "Customer", "customer", "CUSTOMER", "Customer Name", "CustomerName", "customer_name",
-          "Client", "client", "CLIENT", "Client Name", "ClientName", "client_name",
-          "Name", "name", "NAME", "Account", "account", "ACCOUNT"
-        ];
-
-        let partyColumn = null;
         const availableColumns = Object.keys(cashbookData[0] || {});
-
-        // First, try exact match with trimmed column names
-        for (let col of possiblePartyColumns) {
-          const foundCol = availableColumns.find(availableCol => availableCol.trim() === col);
-          if (foundCol) {
-            partyColumn = foundCol;
-            break;
-          }
-        }
-
-        // If no exact match, try case-insensitive match with trimmed names
-        if (!partyColumn) {
-          for (let col of possiblePartyColumns) {
-            const foundCol = availableColumns.find(availableCol => 
-              availableCol.trim().toLowerCase() === col.toLowerCase()
-            );
-            if (foundCol) {
-              partyColumn = foundCol;
-              break;
-            }
-          }
-        }
-
+        partyColumn = detectPartyColumn(availableColumns);
         if (!partyColumn) {
           showMessage(`Could not find a Party column. Available columns: ${availableColumns.join(', ')}`, 'error');
           return;
         }
 
-        // Create unique party buttons from the found column
-        const parties = [...new Set(cashbookData
+        allParties = [...new Set(cashbookData
           .map(row => row[partyColumn])
           .filter(p => p && p.toString().trim() !== "")
+          .map(p => p.toString())
         )].sort();
 
-        if (parties.length === 0) {
+        if (allParties.length === 0) {
           showMessage(`No party names found in column "${partyColumn}".`, 'error');
           return;
         }
 
-        let buttonsHtml = "";
-        parties.forEach(p => {
-          const partyName = p.toString(); // Convert to string first
-          buttonsHtml += `<button onclick="searchEntries('${partyName.replace(/'/g, "\\'")}')">${partyName}</button>`;
-        });
-        document.getElementById("partyButtons").innerHTML = buttonsHtml;
+        renderPartyButtons();
+        populateGlobalPartyFilter();
         document.getElementById("partySection").style.display = 'block';
         document.getElementById('sheetSelector').style.display = 'none';
 
-        showMessage(`Successfully loaded ${cashbookData.length} records with ${parties.length} unique parties from column "${partyColumn}".`);
-
+        showMessage(`Successfully loaded ${cashbookData.length} records with ${allParties.length} unique parties from column "${partyColumn}".`);
       } catch (error) {
         showMessage("Error processing sheet: " + error.message, 'error');
       }
     }
 
-    // Clean table data - remove empty columns and pivot table artifacts
     function cleanTableData(rawData) {
       if (rawData.length === 0) return rawData;
-
-      // Get all column names
       const allColumns = Object.keys(rawData[0]);
-      
-      // Filter out unwanted columns
+
       const validColumns = allColumns.filter(col => {
         const colName = col.toString().toLowerCase();
-        
-        // Remove empty columns (Excel artifacts)
-        if (colName.includes('__empty') || colName.includes('empty')) {
-          return false;
-        }
-        
-        // Remove columns that are just whitespace or numbers
-        if (colName.trim() === '' || /^\d+$/.test(colName)) {
-          return false;
-        }
-        
-        // Remove columns that appear to be pivot table artifacts
-        if (colName.includes('sum of') || colName.includes('count of') || 
+        if (colName.includes('__empty') || colName.includes('empty')) return false;
+        if (colName.trim() === '' || /^\d+$/.test(colName)) return false;
+        if (colName.includes('sum of') || colName.includes('count of') ||
             colName.includes('average of') || colName.includes('grand total') ||
-            colName.includes('total of') || colName.includes('subtotal')) {
-          return false;
-        }
-        
+            colName.includes('total of') || colName.includes('subtotal')) return false;
         return true;
       });
 
-      console.log("Original columns:", allColumns);
-      console.log("Filtered columns:", validColumns);
-
-      // Create cleaned data with only valid columns
-      const cleanedData = rawData.map(row => {
+      return rawData.map(row => {
         const cleanedRow = {};
-        validColumns.forEach(col => {
-          cleanedRow[col] = row[col];
-        });
+        validColumns.forEach(col => { cleanedRow[col] = row[col]; });
         return cleanedRow;
       }).filter(row => {
-        // Remove rows that are completely empty
         const values = Object.values(row);
-        const hasRealData = values.some(val => 
-          val !== "" && val !== null && val !== undefined && 
+        return values.some(val =>
+          val !== "" && val !== null && val !== undefined &&
           (!isNaN(val) && val !== 0) || (typeof val === 'string' && val.trim() !== "")
         );
-        return hasRealData;
       });
-
-      return cleanedData;
     }
 
-    // Search entries by party
+    // ---------- Party search (Tab 1) ----------
+    function renderPartyButtons() {
+      const q = document.getElementById("partySearch").value;
+      const filtered = allParties.filter(p => rowMatches({ p }, q));
+      const container = document.getElementById("partyButtons");
+      container.innerHTML = "";
+
+      filtered.forEach(p => {
+        const btn = document.createElement("button");
+        btn.innerHTML = highlight(p, q);
+        if (p === currentParty) btn.classList.add("party-active");
+        btn.addEventListener("click", () => searchEntries(p));
+        container.appendChild(btn);
+      });
+
+      document.getElementById("partyCount").textContent =
+        q.trim() ? `${filtered.length} of ${allParties.length} parties` : `${allParties.length} parties`;
+
+      if (filtered.length === 0) {
+        container.innerHTML = "<p>No parties match your search.</p>";
+      }
+    }
+
     function searchEntries(partyName) {
       currentParty = partyName;
-      
-      // Find which column contains party names
-      const possiblePartyColumns = [
-        "Party", "party", "PARTY", "Party Name", "PartyName", "party_name",
-        "Customer", "customer", "CUSTOMER", "Customer Name", "CustomerName", "customer_name",
-        "Client", "client", "CLIENT", "Client Name", "ClientName", "client_name",
-        "Name", "name", "NAME", "Account", "account", "ACCOUNT"
-      ];
-
-      let partyColumn = null;
-      const availableColumns = Object.keys(cashbookData[0] || {});
-
-      // First, try exact match with trimmed column names
-      for (let col of possiblePartyColumns) {
-        const foundCol = availableColumns.find(availableCol => availableCol.trim() === col);
-        if (foundCol) {
-          partyColumn = foundCol;
-          break;
-        }
-      }
-
-      // If no exact match, try case-insensitive match with trimmed names
-      if (!partyColumn) {
-        for (let col of possiblePartyColumns) {
-          const foundCol = availableColumns.find(availableCol => 
-            availableCol.trim().toLowerCase() === col.toLowerCase()
-          );
-          if (foundCol) {
-            partyColumn = foundCol;
-            break;
-          }
-        }
-      }
+      document.getElementById("entrySearch").value = "";
 
       const results = cashbookData.filter(row =>
         row[partyColumn] && row[partyColumn].toString().toLowerCase() === partyName.toLowerCase()
       );
+
+      renderPartyButtons(); // refresh active highlight
 
       if (results.length === 0) {
         document.getElementById('results').innerHTML = "No cashbook entries found for this party.";
@@ -387,194 +384,129 @@
       }
 
       currentPartyResults = results;
-      
-      // Show selection area and populate entry checkboxes
       document.getElementById('selectionArea').style.display = 'block';
       populateEntryCheckboxes(results);
-      
-      // Reset selection to "all"
+
       document.querySelector('input[name="entrySelection"][value="all"]').checked = true;
       toggleEntrySelection();
-      
-      // Display results
-      displayResults(results);
     }
 
-    // Populate entry checkboxes
     function populateEntryCheckboxes(results) {
       let checkboxHtml = "";
       results.forEach((row, index) => {
-        // Create a description for each entry
         let description = `Entry ${index + 1}`;
-        
-        // Try to get date for better identification
+
         const possibleDateColumns = ["Date", "date", "DATE", "Entry Date", "Transaction Date"];
         let dateValue = null;
         for (let col of possibleDateColumns) {
-          if (row[col]) {
-            dateValue = row[col];
-            break;
-          }
+          if (row[col]) { dateValue = row[col]; break; }
         }
 
-        // Try to get description
         const possibleDescColumns = ["Description", "description", "DESC", "Particulars", "particulars", "Details", "details"];
         let descValue = null;
         for (let col of possibleDescColumns) {
           if (row[col] && row[col].toString().trim() !== "") {
-            descValue = row[col].toString().substring(0, 30); // Limit length
+            descValue = row[col].toString().substring(0, 30);
             break;
           }
         }
 
         if (dateValue) {
-          // Format date if it's a number (Excel date)
           if (typeof dateValue === "number" && dateValue > 1000) {
-            const excelDate = new Date((dateValue - 25569) * 86400 * 1000);
-            dateValue = excelDate.toLocaleDateString('en-GB');
+            dateValue = new Date((dateValue - 25569) * 86400 * 1000).toLocaleDateString('en-GB');
           }
           description = `${dateValue}`;
         }
-        
-        if (descValue) {
-          description += ` - ${descValue}`;
-        }
-        
+        if (descValue) description += ` - ${descValue}`;
+
         checkboxHtml += `
           <label class="entry-checkbox">
-            <input type="checkbox" value="${index}"> 
-            ${description}
+            <input type="checkbox" value="${index}">
+            ${esc(description)}
           </label>
         `;
       });
       document.getElementById('entryCheckboxes').innerHTML = checkboxHtml;
     }
 
-    // Toggle entry selection method
     function toggleEntrySelection() {
       const isSpecific = document.querySelector('input[name="entrySelection"][value="specific"]').checked;
       document.getElementById('specificEntriesArea').style.display = isSpecific ? 'block' : 'none';
-      
-      if (!isSpecific) {
-        // If "all" is selected, apply immediately
-        applySelection();
-      }
+      if (!isSpecific) applySelection();
     }
 
-    // Apply selection and filter results
+    function clearEntrySearch() {
+      document.getElementById("entrySearch").value = "";
+      applySelection();
+    }
+
+    // Apply checkbox selection + in-cashbook text search
     function applySelection() {
       if (currentPartyResults.length === 0) return;
-      
+
       const isSpecific = document.querySelector('input[name="entrySelection"][value="specific"]').checked;
-      let filteredResults = [];
-      
+      let filteredResults;
+
       if (isSpecific) {
-        // Get selected entries from checkboxes only
-        const selectedCheckboxes = Array.from(document.querySelectorAll('#entryCheckboxes input[type="checkbox"]:checked'));
-        
-        // Filter by selected checkboxes
-        const selectedIndices = selectedCheckboxes.map(cb => parseInt(cb.value));
-        filteredResults = currentPartyResults.filter((row, index) => selectedIndices.includes(index));
+        const selected = Array.from(document.querySelectorAll('#entryCheckboxes input[type="checkbox"]:checked'))
+          .map(cb => parseInt(cb.value));
+        filteredResults = currentPartyResults.filter((row, index) => selected.includes(index));
       } else {
-        // Include all entries
         filteredResults = currentPartyResults;
       }
-      
-      displayResults(filteredResults);
+
+      const query = document.getElementById("entrySearch").value;
+      filteredResults = filteredResults.filter(row => rowMatches(row, query));
+
+      displayResults(filteredResults, query);
     }
 
-    // Find column key with case-insensitive matching
-    function findColumnKey(row, targetColumnName) {
-      const keys = Object.keys(row);
-      return keys.find(key => key.toLowerCase().trim() === targetColumnName.toLowerCase()) || null;
-    }
-
-    // Display results in table
-    function displayResults(results) {
-      if (results.length === 0) {
-        document.getElementById('results').innerHTML = "No cashbook entries found matching your selection.";
-        document.getElementById('printBtn').style.display = 'none';
-        return;
-      }
-
-      // Build table - ensure we show ALL columns
+    // ---------- Shared table builder ----------
+    function buildTable(results, query, extraTitleHtml) {
       const allColumns = Object.keys(results[0]);
-      
-      let html = `
-        <div class="print-company-header">Al-Hamd Dyeing - Cashbook</div>
-        <div class="print-party-name">${currentParty}</div>
-        <h3 style="display: none;">Cashbook Entries for ${currentParty} (${results.length} entries)</h3>
-        <table><tr>`;
-      
-      // Display ALL column headers
-      allColumns.forEach(key => {
-        html += `<th>${key}</th>`;
-      });
+      let html = (extraTitleHtml || "") + "<table><tr>";
+      allColumns.forEach(key => { html += `<th>${esc(key)}</th>`; });
       html += "</tr>";
 
-      // Initialize totals for debit and credit
       let totalDebit = 0, totalCredit = 0;
 
-      // Display all data rows
       results.forEach(row => {
         html += "<tr>";
         allColumns.forEach(key => {
-          let value = row[key];
-          
-          // Format dates properly (Excel dates come as numbers)
-          if (key.toLowerCase().includes('date') && typeof value === "number" && value > 1000) {
-            // Convert Excel date serial number to proper date
-            const excelDate = new Date((value - 25569) * 86400 * 1000);
-            value = excelDate.toLocaleDateString('en-GB'); // DD/MM/YYYY format
-          } else if (typeof value === "number" && !key.toLowerCase().includes('date')) {
-            value = value.toFixed(2);
-          }
-          
-          // Add color classes for debit/credit columns
-          let cellClass = "";
+          const value = formatCell(key, row[key]);
           const keyLower = key.toLowerCase().trim();
-          if (keyLower === "debit" && value > 0) {
-            cellClass = "class='debit'";
-          } else if (keyLower === "credit" && value > 0) {
-            cellClass = "class='credit'";
-          }
-          
-          html += `<td ${cellClass}>${value || ""}</td>`;
+          let cellClass = "";
+          if (keyLower === "debit" && value > 0) cellClass = "class='debit'";
+          else if (keyLower === "credit" && value > 0) cellClass = "class='credit'";
+          html += `<td ${cellClass}>${highlight(value, query)}</td>`;
         });
         html += "</tr>";
 
-        // Calculate totals for debit and credit columns (case-insensitive)
         const debitKey = findColumnKey(row, "debit");
         const creditKey = findColumnKey(row, "credit");
-
         totalDebit += Number(debitKey ? row[debitKey] : 0) || 0;
         totalCredit += Number(creditKey ? row[creditKey] : 0) || 0;
       });
 
-      // Totals row - show totals for debit and credit columns, empty for others
       html += "<tr class='totals'>";
       allColumns.forEach(key => {
         const keyLower = key.toLowerCase().trim();
-        if (keyLower === "debit") {
-          html += `<td class='debit'>${totalDebit.toFixed(2)}</td>`;
-        } else if (keyLower === "credit") {
-          html += `<td class='credit'>${totalCredit.toFixed(2)}</td>`;
-        } else {
-          html += "<td></td>";
-        }
+        if (keyLower === "debit") html += `<td class='debit'>${totalDebit.toFixed(2)}</td>`;
+        else if (keyLower === "credit") html += `<td class='credit'>${totalCredit.toFixed(2)}</td>`;
+        else html += "<td></td>";
       });
-      html += "</tr>";
+      html += "</tr></table>";
 
-      html += "</table>";
+      return { html, totalDebit, totalCredit };
+    }
 
-      // Add balance summary
+    function summaryBox(title, totalDebit, totalCredit) {
       const netBalance = totalDebit - totalCredit;
       const balanceType = netBalance > 0 ? "Debit Balance" : netBalance < 0 ? "Credit Balance" : "Balanced";
       const balanceColor = netBalance > 0 ? "#ffcccc" : netBalance < 0 ? "#ccffcc" : "#ffffcc";
-
-      html += `
+      return `
         <div style="margin-top: 20px; padding: 15px; border: 2px solid #333; border-radius: 8px; background: #f0f8ff;">
-          <h3 style="margin-top: 0; color: #333;">Cashbook Summary for ${currentParty}</h3>
+          <h3 style="margin-top: 0; color: #333;">${esc(title)}</h3>
           <table style="width: auto; margin: 0;">
             <tr>
               <td style="padding: 8px; font-weight: bold; text-align: right; border: 1px solid #ddd;">Total Debit:</td>
@@ -591,17 +523,93 @@
               </td>
             </tr>
           </table>
-        </div>
-      `;
+        </div>`;
+    }
 
-      document.getElementById('results').innerHTML = html;
+    // ---------- Party results (Tab 1) ----------
+    function displayResults(results, query) {
+      if (results.length === 0) {
+        document.getElementById('results').innerHTML = "No cashbook entries found matching your selection/search.";
+        document.getElementById('printBtn').style.display = 'none';
+        return;
+      }
+
+      const title = `
+        <div class="print-company-header">Al-Hamd Dyeing - Cashbook</div>
+        <div class="print-party-name">${esc(currentParty)}</div>
+        <h3 style="display: none;">Cashbook Entries for ${esc(currentParty)} (${results.length} entries)</h3>
+        <div class="search-info no-print">Showing ${results.length} of ${currentPartyResults.length} entries${query && query.trim() ? ` matching "${esc(query)}"` : ""}</div>`;
+
+      const t = buildTable(results, query, title);
+      document.getElementById('results').innerHTML =
+        t.html + summaryBox(`Cashbook Summary for ${currentParty}`, t.totalDebit, t.totalCredit);
       document.getElementById('printBtn').style.display = 'inline-block';
     }
 
-    // Print results
+    // ---------- Global search (Tab 2) ----------
+    function populateGlobalPartyFilter() {
+      const sel = document.getElementById("globalPartyFilter");
+      sel.innerHTML = '<option value="">All parties</option>';
+      allParties.forEach(p => {
+        const opt = document.createElement("option");
+        opt.value = p;
+        opt.textContent = p;
+        sel.appendChild(opt);
+      });
+    }
+
+    function clearGlobalSearch() {
+      document.getElementById("globalSearch").value = "";
+      document.getElementById("globalPartyFilter").value = "";
+      runGlobalSearch();
+    }
+
+    function runGlobalSearch() {
+      const out = document.getElementById("searchResults");
+      const summary = document.getElementById("searchSummary");
+
+      if (cashbookData.length === 0) {
+        out.innerHTML = "";
+        summary.textContent = "Data not loaded yet.";
+        return;
+      }
+
+      const query = document.getElementById("globalSearch").value;
+      const party = document.getElementById("globalPartyFilter").value;
+
+      if (!query.trim() && !party) {
+        out.innerHTML = "";
+        summary.textContent = "Type something above (or pick a party) to search.";
+        return;
+      }
+
+      const results = cashbookData.filter(row => {
+        if (party && (row[partyColumn] || "").toString() !== party) return false;
+        return rowMatches(row, query);
+      });
+
+      if (results.length === 0) {
+        out.innerHTML = "";
+        summary.textContent = "No entries found.";
+        return;
+      }
+
+      summary.textContent =
+        `${results.length} of ${cashbookData.length} entries found` +
+        (query.trim() ? ` for "${query}"` : "") + (party ? ` in ${party}` : "");
+
+      const printTitle = `
+        <div class="print-company-header">Al-Hamd Dyeing - Cashbook</div>
+        <div class="print-party-name">${esc(party || "All Parties")}${query.trim() ? " - Search: " + esc(query) : ""}</div>`;
+
+      const t = buildTable(results, query, printTitle);
+      out.innerHTML = t.html + summaryBox("Summary of Search Results", t.totalDebit, t.totalCredit);
+    }
+
     function printResults() {
       window.print();
     }
   </script>
 </body>
+
 </html>
